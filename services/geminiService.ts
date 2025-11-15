@@ -37,9 +37,17 @@ export interface GraphData {
     variables: GraphVariable[];
 }
 
+// New interface for a single Blueprint graph with its context
+export interface BlueprintGraph {
+    name: string;
+    description: string;
+    graphData: GraphData;
+}
+
+// Updated main response structure
 export interface BlueprintResponse {
     guide: string;
-    graphData: GraphData;
+    blueprintGraphs: BlueprintGraph[];
 }
 
 
@@ -47,77 +55,91 @@ export interface BlueprintResponse {
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
+const graphDataSchema = {
+    type: Type.OBJECT,
+    description: "Dados estruturados para a visualização do Blueprint.",
+    properties: {
+    nodes: {
+        type: Type.ARRAY,
+        items: {
+        type: Type.OBJECT,
+        properties: {
+            id: { type: Type.STRING },
+            name: { type: Type.STRING },
+            type: { type: Type.STRING },
+            x: { type: Type.NUMBER },
+            y: { type: Type.NUMBER },
+            properties: {
+            type: Type.OBJECT,
+            properties: { value: { type: Type.STRING } },
+            },
+            codeSnippet: { type: Type.STRING },
+            pins: {
+            type: Type.ARRAY,
+            items: {
+                type: Type.OBJECT,
+                properties: {
+                id: { type: Type.STRING },
+                name: { type: Type.STRING },
+                type: { type: Type.STRING, description: "'exec' ou 'data'" },
+                direction: { type: Type.STRING, description: "'in' ou 'out'" },
+                dataType: { type: Type.STRING, description: "Tipo de dado do pino, e.g., 'Integer', 'Boolean', 'Exec'" }
+                },
+                required: ['id', 'name', 'type', 'direction', 'dataType']
+            }
+            }
+        },
+        required: ['id', 'name', 'type', 'x', 'y', 'pins']
+        }
+    },
+    connections: {
+        type: Type.ARRAY,
+        items: {
+        type: Type.OBJECT,
+        properties: {
+            fromPinId: { type: Type.STRING },
+            toPinId: { type: Type.STRING }
+        },
+        required: ['fromPinId', 'toPinId']
+        }
+    },
+    variables: {
+        type: Type.ARRAY,
+        items: {
+        type: Type.OBJECT,
+        properties: {
+            name: { type: Type.STRING },
+            type: { type: Type.STRING }
+        },
+        required: ['name', 'type']
+        }
+    }
+    },
+    required: ['nodes', 'connections', 'variables']
+};
+
 const responseSchema = {
   type: Type.OBJECT,
   properties: {
     guide: {
       type: Type.STRING,
-      description: "Guia passo a passo em formato markdown."
+      description: "Um guia geral e introdutório em formato markdown."
     },
-    graphData: {
-      type: Type.OBJECT,
-      description: "Dados estruturados para a visualização do Blueprint.",
-      properties: {
-        nodes: {
-          type: Type.ARRAY,
-          items: {
+    blueprintGraphs: {
+        type: Type.ARRAY,
+        description: "Um array contendo um grafo de blueprint para cada função ou evento principal no código C++.",
+        items: {
             type: Type.OBJECT,
             properties: {
-              id: { type: Type.STRING },
-              name: { type: Type.STRING },
-              type: { type: Type.STRING },
-              x: { type: Type.NUMBER },
-              y: { type: Type.NUMBER },
-              properties: {
-                type: Type.OBJECT,
-                properties: { value: { type: Type.STRING } },
-              },
-              codeSnippet: { type: Type.STRING },
-              pins: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    id: { type: Type.STRING },
-                    name: { type: Type.STRING },
-                    type: { type: Type.STRING, description: "'exec' ou 'data'" },
-                    direction: { type: Type.STRING, description: "'in' ou 'out'" },
-                    dataType: { type: Type.STRING, description: "Tipo de dado do pino, e.g., 'Integer', 'Boolean', 'Exec'" }
-                  },
-                  required: ['id', 'name', 'type', 'direction', 'dataType']
-                }
-              }
+                name: { type: Type.STRING, description: "O nome da função ou evento (e.g., 'Event BeginPlay', 'MyCustomFunction')."},
+                description: { type: Type.STRING, description: "Uma breve explicação da finalidade deste grafo de blueprint."},
+                graphData: graphDataSchema
             },
-            required: ['id', 'name', 'type', 'x', 'y', 'pins']
-          }
-        },
-        connections: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              fromPinId: { type: Type.STRING },
-              toPinId: { type: Type.STRING }
-            },
-            required: ['fromPinId', 'toPinId']
-          }
-        },
-        variables: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              name: { type: Type.STRING },
-              type: { type: Type.STRING }
-            },
-            required: ['name', 'type']
-          }
+            required: ['name', 'description', 'graphData']
         }
-      },
-      required: ['nodes', 'connections', 'variables']
     }
   },
-  required: ['guide', 'graphData']
+  required: ['guide', 'blueprintGraphs']
 };
 
 
@@ -129,60 +151,26 @@ export const generateBlueprintGuide = async (cppCode: string): Promise<Blueprint
   const model = "gemini-2.5-pro";
 
   const prompt = `
-    Você é um desenvolvedor especialista em Unreal Engine 5, mestre em Blueprints. Sua tarefa é analisar o código C++ e gerar um guia e dados para um grafo de Blueprints.
+    Você é um desenvolvedor especialista em Unreal Engine 5. Sua tarefa é analisar o código C++ e dividí-lo em múltiplos grafos de Blueprint, um para cada função ou evento principal.
     Sua resposta DEVE ser um único objeto JSON VÁLIDO que corresponda ao schema.
 
-    **Regras para o Guia (Markdown):**
-    - Use cabeçalhos e listas. Destaque nomes de nós com \`backticks\`.
-
-    **Regras para o 'graphData' (JSON):**
-    - **nodes**: Cada nó deve ter uma lista de 'pins'.
-      - **pins**: Cada pino deve ter um 'id' único globalmente, 'name', 'type' ('exec' ou 'data'), 'direction' ('in' ou 'out') e 'dataType' (e.g., 'Exec', 'Integer', 'Boolean', 'String'). Pinos 'Exec' devem ter dataType 'Exec'.
-    - **connections**: Conecte nós usando 'fromPinId' e 'toPinId'. A conexão deve ser entre um pino 'out' e um pino 'in' compatível.
-    - **codeSnippet**: O campo 'codeSnippet' (opcional) no nó DEVE conter a linha de código C++ exata que resultou na criação do nó.
-
-    **Exemplo de Resposta JSON Esperada:**
-    \`\`\`json
-    {
-      "guide": "## Visão Geral\\nCrie uma variável para vida...",
-      "graphData": {
-        "variables": [{"name": "Vida", "type": "Integer"}],
-        "nodes": [
-          {
-            "id": "node-1", "name": "Event BeginPlay", "type": "event", "x": 100, "y": 200,
-            "pins": [
-              {"id": "pin-1-exec-out", "name": "", "type": "exec", "direction": "out", "dataType": "Exec"}
-            ]
-          },
-          {
-            "id": "node-2", "name": "Set Vida", "type": "variable_set", "x": 350, "y": 200, "codeSnippet": "vida = 100;",
-            "pins": [
-              {"id": "pin-2-exec-in", "name": "", "type": "exec", "direction": "in", "dataType": "Exec"},
-              {"id": "pin-2-exec-out", "name": "", "type": "exec", "direction": "out", "dataType": "Exec"},
-              {"id": "pin-2-data-in", "name": "Vida", "type": "data", "direction": "in", "dataType": "Integer"}
-            ]
-          },
-          {
-            "id": "node-3", "name": "100", "type": "literal", "x": 300, "y": 280, "properties": {"value": "100"}, "codeSnippet": "100",
-            "pins": [
-              {"id": "pin-3-data-out", "name": "", "type": "data", "direction": "out", "dataType": "Integer"}
-            ]
-          }
-        ],
-        "connections": [
-          {"fromPinId": "pin-1-exec-out", "toPinId": "pin-2-exec-in"},
-          {"fromPinId": "pin-3-data-out", "toPinId": "pin-2-data-in"}
-        ]
-      }
-    }
-    \`\`\`
+    **Regras Gerais:**
+    - **Identifique Funções**: Analise o código C++ e identifique cada função, evento (como BeginPlay, Tick) ou bloco lógico distinto.
+    - **Crie Múltiplos Grafos**: Para cada função/evento identificado, gere um objeto de grafo separado.
+    - **Guia Geral**: O campo 'guide' deve ser um texto markdown geral sobre o código como um todo.
+    - **blueprintGraphs Array**: Coloque todos os objetos de grafo de função/evento dentro deste array.
+        - **name**: O nome da função/evento que o grafo representa.
+        - **description**: Uma descrição concisa da finalidade deste grafo específico.
+        - **graphData**: Os dados do grafo (nós, conexões, etc.) para esta função.
+    - **codeSnippet**: Para cada nó, o campo opcional 'codeSnippet' DEVE conter a linha de código C++ exata que resultou na sua criação.
+    - **Pinos**: Cada nó deve ter uma lista detalhada de 'pins', cada um com um 'id' único globalmente. Conexões usam 'fromPinId' e 'toPinId'.
 
     **Código C++ para Análise:**
     \`\`\`cpp
     ${cppCode}
     \`\`\`
 
-    Gere o objeto JSON completo agora.
+    Gere o objeto JSON completo agora, analisando todas as funções no código fornecido.
   `;
   
   let rawResponseText = '';
@@ -199,7 +187,7 @@ export const generateBlueprintGuide = async (cppCode: string): Promise<Blueprint
     rawResponseText = response.text;
     let jsonText = rawResponseText.trim();
 
-    // FIX: Clean potential markdown fences from the response
+    // Clean potential markdown fences from the response
     if (jsonText.startsWith('```json')) {
         jsonText = jsonText.substring(7);
         if (jsonText.endsWith('```')) {
@@ -211,7 +199,7 @@ export const generateBlueprintGuide = async (cppCode: string): Promise<Blueprint
 
   } catch (error) {
     console.error("Error calling or parsing Gemini API response:", error);
-    console.error("Raw response text that caused the error:\n", rawResponseText); // Log the problematic text
+    console.error("Raw response text that caused the error:\n", rawResponseText);
     if (error instanceof Error) {
         throw new Error(`A chamada para a API Gemini falhou ou a resposta não era um JSON válido: ${error.message}`);
     }

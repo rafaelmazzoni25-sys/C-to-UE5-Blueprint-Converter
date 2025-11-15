@@ -4,6 +4,7 @@ import { PaletteIcon, XIcon } from './icons';
 
 interface BlueprintVisualizerProps {
   graphData: GraphData;
+  isInteractive?: boolean;
 }
 
 const NODE_WIDTH = 220;
@@ -104,7 +105,7 @@ const NodeDetailPanel = ({ node, graphData, onClose }: { node: GraphNode, graphD
 };
 
 
-export const BlueprintVisualizer: React.FC<BlueprintVisualizerProps> = ({ graphData }) => {
+export const BlueprintVisualizer: React.FC<BlueprintVisualizerProps> = ({ graphData, isInteractive = true }) => {
     const [localGraphData, setLocalGraphData] = useState<GraphData>(graphData);
     const [viewTransform, setViewTransform] = useState({ x: 50, y: 50, scale: 1 });
     const [isPanning, setIsPanning] = useState(false);
@@ -114,14 +115,48 @@ export const BlueprintVisualizer: React.FC<BlueprintVisualizerProps> = ({ graphD
     const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
     
     const svgRef = useRef<SVGSVGElement>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
     const interactionStartRef = useRef({ x: 0, y: 0 });
     const wasDraggedRef = useRef(false);
 
     useEffect(() => {
         setLocalGraphData(graphData);
-        setViewTransform({ x: 50, y: 50, scale: 1 });
         setSelectedNode(null);
-    }, [graphData]);
+
+        if (!isInteractive) {
+            // Auto-fit logic
+            if (graphData.nodes.length > 0 && containerRef.current) {
+                const PADDING = 50;
+                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                
+                graphData.nodes.forEach(node => {
+                    const nodeHeight = calculateNodeHeight(node);
+                    minX = Math.min(minX, node.x);
+                    minY = Math.min(minY, node.y);
+                    maxX = Math.max(maxX, node.x + NODE_WIDTH);
+                    maxY = Math.max(maxY, node.y + nodeHeight);
+                });
+
+                const graphWidth = maxX - minX;
+                const graphHeight = maxY - minY;
+                
+                const { width: containerWidth, height: containerHeight } = containerRef.current.getBoundingClientRect();
+                
+                if (graphWidth > 0 && graphHeight > 0) {
+                    const scaleX = (containerWidth - PADDING * 2) / graphWidth;
+                    const scaleY = (containerHeight - PADDING * 2) / graphHeight;
+                    const scale = Math.min(scaleX, scaleY, 1); // Cap scale at 1
+
+                    const newX = (containerWidth - graphWidth * scale) / 2 - minX * scale;
+                    const newY = (containerHeight - graphHeight * scale) / 2 - minY * scale;
+                    
+                    setViewTransform({ x: newX, y: newY, scale });
+                }
+            }
+        } else {
+             setViewTransform({ x: 50, y: 50, scale: 1 });
+        }
+    }, [graphData, isInteractive]);
     
     const nodeMap = useRef(new Map<string, GraphNode>()).current;
     const pinMap = useRef(new Map<string, GraphPin>()).current;
@@ -142,24 +177,27 @@ export const BlueprintVisualizer: React.FC<BlueprintVisualizerProps> = ({ graphD
 
 
     const handleNodeMouseDown = useCallback((e: React.MouseEvent, nodeId: string) => {
+        if (!isInteractive) return;
         e.stopPropagation();
         const node = nodeMap.get(nodeId);
         if (!node) return;
         setDraggingNode({ id: nodeId, initialX: node.x, initialY: node.y });
         interactionStartRef.current = { x: e.clientX, y: e.clientY };
         wasDraggedRef.current = false;
-    }, [nodeMap]);
+    }, [nodeMap, isInteractive]);
     
     const handleBackgroundMouseDown = useCallback((e: React.MouseEvent) => {
+        if (!isInteractive) return;
         if (e.target === e.currentTarget) {
             setIsPanning(true);
             interactionStartRef.current = { x: e.clientX, y: e.clientY };
             setSelectedNode(null);
             setIsColorPickerVisible(false);
         }
-    }, []);
+    }, [isInteractive]);
 
     const handleMouseMove = useCallback((e: React.MouseEvent) => {
+        if (!isInteractive) return;
         const dx = e.clientX - interactionStartRef.current.x;
         const dy = e.clientY - interactionStartRef.current.y;
 
@@ -182,18 +220,20 @@ export const BlueprintVisualizer: React.FC<BlueprintVisualizerProps> = ({ graphD
             setViewTransform(prev => ({ ...prev, x: prev.x + dx, y: prev.y + dy }));
             interactionStartRef.current = { x: e.clientX, y: e.clientY };
         }
-    }, [draggingNode, isPanning, viewTransform.scale]);
+    }, [draggingNode, isPanning, viewTransform.scale, isInteractive]);
 
     const handleMouseUp = useCallback(() => {
+        if (!isInteractive) return;
         if (draggingNode && !wasDraggedRef.current) {
             const node = nodeMap.get(draggingNode.id);
             setSelectedNode(node || null);
         }
         setIsPanning(false);
         setDraggingNode(null);
-    }, [draggingNode, nodeMap]);
+    }, [draggingNode, nodeMap, isInteractive]);
 
     const handleWheel = useCallback((e: React.WheelEvent) => {
+        if (!isInteractive) return;
         e.preventDefault();
         const zoomIntensity = 0.1;
         const newScale = viewTransform.scale * (1 - e.deltaY * 0.01 * zoomIntensity);
@@ -214,49 +254,54 @@ export const BlueprintVisualizer: React.FC<BlueprintVisualizerProps> = ({ graphD
         const newY = mouseY - pointY * clampedScale;
 
         setViewTransform({ x: newX, y: newY, scale: clampedScale });
-    }, [viewTransform]);
+    }, [viewTransform, isInteractive]);
     
     if (!localGraphData || !localGraphData.nodes || localGraphData.nodes.length === 0) {
         return <div className="p-4 text-slate-500">Não há dados para visualizar.</div>;
     }
     
-    const cursorClass = isPanning ? 'cursor-grabbing' : draggingNode ? 'cursor-grabbing' : 'cursor-grab';
+    const cursorClass = isInteractive ? (isPanning || draggingNode ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-default';
 
     return (
         <div
+            ref={containerRef}
             className={`relative w-full h-full bg-slate-900/70 rounded-md overflow-hidden ${cursorClass}`}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
             onWheel={handleWheel}
         >
-            <div className="absolute top-2 right-2 z-20">
-                <button
-                    onClick={() => setIsColorPickerVisible(!isColorPickerVisible)}
-                    className="p-2 bg-slate-700/80 hover:bg-slate-600 rounded-full text-white transition-colors"
-                    title="Personalizar Cores dos Nós"
-                >
-                    <PaletteIcon className="w-5 h-5" />
-                </button>
-            </div>
-
-            {isColorPickerVisible && (
-                <div className="absolute top-14 right-2 z-20 bg-slate-800 border border-slate-600 p-4 rounded-lg shadow-xl w-64">
-                    <h4 className="text-white font-bold mb-3 text-sm">Cores dos Nós</h4>
-                    <div className="space-y-2">
-                        {Object.entries(INITIAL_NODE_COLORS).map(([type, _]) => (
-                            <div key={type} className="flex items-center justify-between">
-                                <span className="text-slate-300 text-xs capitalize mr-2">{type.replace(/_/g, ' ')}</span>
-                                <input
-                                    type="color"
-                                    value={nodeColors[type as keyof typeof nodeColors] || nodeColors.default}
-                                    onChange={(e) => setNodeColors(prev => ({ ...prev, [type]: e.target.value }))}
-                                    className="w-8 h-8 p-0 border-none rounded bg-transparent cursor-pointer"
-                                />
-                            </div>
-                        ))}
-                    </div>
+            {isInteractive && (
+                <>
+                <div className="absolute top-2 right-2 z-20">
+                    <button
+                        onClick={() => setIsColorPickerVisible(!isColorPickerVisible)}
+                        className="p-2 bg-slate-700/80 hover:bg-slate-600 rounded-full text-white transition-colors"
+                        title="Personalizar Cores dos Nós"
+                    >
+                        <PaletteIcon className="w-5 h-5" />
+                    </button>
                 </div>
+
+                {isColorPickerVisible && (
+                    <div className="absolute top-14 right-2 z-20 bg-slate-800 border border-slate-600 p-4 rounded-lg shadow-xl w-64">
+                        <h4 className="text-white font-bold mb-3 text-sm">Cores dos Nós</h4>
+                        <div className="space-y-2">
+                            {Object.entries(INITIAL_NODE_COLORS).map(([type, _]) => (
+                                <div key={type} className="flex items-center justify-between">
+                                    <span className="text-slate-300 text-xs capitalize mr-2">{type.replace(/_/g, ' ')}</span>
+                                    <input
+                                        type="color"
+                                        value={nodeColors[type as keyof typeof nodeColors] || nodeColors.default}
+                                        onChange={(e) => setNodeColors(prev => ({ ...prev, [type]: e.target.value }))}
+                                        className="w-8 h-8 p-0 border-none rounded bg-transparent cursor-pointer"
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+                </>
             )}
 
             <svg ref={svgRef} width="100%" height="100%" onMouseDown={handleBackgroundMouseDown}>
@@ -284,9 +329,10 @@ export const BlueprintVisualizer: React.FC<BlueprintVisualizerProps> = ({ graphD
 
                     {localGraphData.nodes.map(node => {
                         const nodeHeight = calculateNodeHeight(node);
+                        const nodeCursorClass = isInteractive ? 'cursor-grab' : 'cursor-default';
                         return (
-                        <g key={node.id} transform={`translate(${node.x}, ${node.y})`} onMouseDown={(e) => handleNodeMouseDown(e, node.id)} className="cursor-grab">
-                            {selectedNode?.id === node.id && (
+                        <g key={node.id} transform={`translate(${node.x}, ${node.y})`} onMouseDown={(e) => handleNodeMouseDown(e, node.id)} className={nodeCursorClass}>
+                            {isInteractive && selectedNode?.id === node.id && (
                                 <rect width={NODE_WIDTH + 8} height={nodeHeight + 8} x="-4" y="-4" rx="12" fill="none" stroke="#0EA5E9" strokeWidth="2" strokeDasharray="4 4" >
                                      <animate attributeName="stroke-dashoffset" from="0" to="8" dur="0.5s" repeatCount="indefinite" />
                                 </rect>
@@ -330,7 +376,7 @@ export const BlueprintVisualizer: React.FC<BlueprintVisualizerProps> = ({ graphD
                     )})}
                 </g>
             </svg>
-            {selectedNode && <NodeDetailPanel node={selectedNode} graphData={localGraphData} onClose={() => setSelectedNode(null)} />}
+            {isInteractive && selectedNode && <NodeDetailPanel node={selectedNode} graphData={localGraphData} onClose={() => setSelectedNode(null)} />}
         </div>
     );
 };

@@ -1,7 +1,5 @@
-
 import React, { useState, useCallback } from 'react';
-// FIX: Import `GraphData` to use for state typing.
-import { generateBlueprintGuide, BlueprintResponse, GraphData } from './services/geminiService';
+import { generateBlueprintGuide, BlueprintResponse, BlueprintGraph } from './services/geminiService';
 import { CodeEditor } from './components/CodeEditor';
 import { OutputDisplay } from './components/OutputDisplay';
 import { UnrealIcon } from './components/icons';
@@ -9,8 +7,7 @@ import { UnrealIcon } from './components/icons';
 const App: React.FC = () => {
   const [cppCode, setCppCode] = useState<string>('');
   const [blueprintGuide, setBlueprintGuide] = useState<string>('');
-  // FIX: Changed state type from `any` to `GraphData | null` for type safety.
-  const [graphData, setGraphData] = useState<GraphData | null>(null);
+  const [blueprintGraphs, setBlueprintGraphs] = useState<BlueprintGraph[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -22,12 +19,12 @@ const App: React.FC = () => {
     setIsLoading(true);
     setError(null);
     setBlueprintGuide('');
-    setGraphData(null);
+    setBlueprintGraphs([]);
 
     try {
       const response: BlueprintResponse = await generateBlueprintGuide(cppCode);
       setBlueprintGuide(response.guide);
-      setGraphData(response.graphData);
+      setBlueprintGraphs(response.blueprintGraphs);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Ocorreu um erro desconhecido.';
       setError(`Falha ao gerar o guia: ${errorMessage}`);
@@ -60,7 +57,7 @@ const App: React.FC = () => {
           />
           <OutputDisplay
             guide={blueprintGuide}
-            graphData={graphData}
+            blueprintGraphs={blueprintGraphs}
             isLoading={isLoading}
             error={error}
           />
