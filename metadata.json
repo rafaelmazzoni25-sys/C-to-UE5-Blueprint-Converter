@@ -1,0 +1,5 @@
+{
+  "name": "C++ to UE5 Blueprint Converter",
+  "description": "An AI-powered tool that analyzes C++ code and generates a step-by-step guide on how to replicate the logic using Unreal Engine 5 Blueprints.",
+  "requestFramePermissions": []
+}

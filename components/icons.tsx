@@ -1,0 +1,80 @@
+
+import React from 'react';
+
+export const MagicWandIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="24"
+    height="24"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <path d="M15 4V2" />
+    <path d="M15 10V8" />
+    <path d="M12.3 7.7 11 9" />
+    <path d="m10 6-1.3-1.3" />
+    <path d="M5 4V2" />
+    <path d="M5 10V8" />
+    <path d="M7.7 7.7 9 9" />
+    <path d="m14 6-1.3-1.3" />
+    <path d="M2 14h20" />
+    <path d="m20 14 1 6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2l1-6" />
+    <path d="M6 14 8 8" />
+    <path d="M18 14l-2-6" />
+  </svg>
+);
+
+export const UnrealIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+    <svg 
+        xmlns="http://www.w3.org/2000/svg" 
+        viewBox="0 0 24 24" 
+        fill="currentColor"
+        {...props}
+    >
+        <path d="M16.143 2l-3.215 10.37h-1.856L7.857 2H2l7.43 20h2.14l7.43-20h-5.857zM20.57 5.43h-2.14l-1.43 4.28h2.14l1.43-4.28z" />
+    </svg>
+);
+
+export const BookOpenIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="24"
+    height="24"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+    <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+  </svg>
+);
+
+export const ShareNodesIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+    <svg 
+        xmlns="http://www.w3.org/2000/svg"
+        width="24"
+        height="24"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        {...props}
+    >
+        <circle cx="18" cy="5" r="3" />
+        <circle cx="6" cy="12" r="3" />
+        <circle cx="18" cy="19" r="3" />
+        <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+        <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+    </svg>
+);
