@@ -9,6 +9,7 @@ export interface GraphNode {
   x: number;
   y: number;
   properties?: { value?: string };
+  codeSnippet?: string;
 }
 
 export interface GraphConnection {
@@ -65,6 +66,10 @@ const responseSchema = {
                 properties: {
                     value: { type: Type.STRING, description: "O valor de um nó literal." }
                 },
+              },
+              codeSnippet: {
+                type: Type.STRING,
+                description: "O trecho de código C++ original que corresponde a este nó."
               }
             },
             required: ['id', 'name', 'type', 'x', 'y']
@@ -121,7 +126,7 @@ export const generateBlueprintGuide = async (cppCode: string): Promise<Blueprint
     - Destaque nomes de nós, variáveis e pinos com \`backticks\`.
 
     **Regras para o 'graphData' (JSON):**
-    - **nodes**: 'id' deve ser único. 'type' pode ser 'event', 'function', 'variable_get', 'variable_set', 'flow_control', ou 'literal'. As coordenadas 'x' e 'y' devem criar um layout legível da esquerda para a direita. O campo 'properties' é opcional e só deve ser usado para nós do tipo 'literal' para especificar seu valor.
+    - **nodes**: 'id' deve ser único. 'type' pode ser 'event', 'function', 'variable_get', 'variable_set', 'flow_control', ou 'literal'. As coordenadas 'x' e 'y' devem criar um layout legível da esquerda para a direita. O campo 'properties' é opcional e só deve ser usado para nós do tipo 'literal' para especificar seu valor. O campo 'codeSnippet' (opcional) DEVE conter a linha ou bloco de código C++ exato que resultou na criação deste nó; isso é crucial para mapear a visualização de volta ao código-fonte.
     - **connections**: Conecte nós usando seus 'id's. 'type' pode ser 'exec' (fluxo de execução) ou 'data' (fluxo de dados).
     - **variables**: Liste todas as variáveis necessárias com seu nome e tipo (ex: 'Integer', 'Boolean').
 
@@ -133,8 +138,8 @@ export const generateBlueprintGuide = async (cppCode: string): Promise<Blueprint
         "variables": [{"name": "Vida", "type": "Integer"}],
         "nodes": [
           {"id": "node-1", "name": "Event BeginPlay", "type": "event", "x": 100, "y": 200},
-          {"id": "node-2", "name": "Set Vida", "type": "variable_set", "x": 350, "y": 200},
-          {"id": "node-3", "name": "100", "type": "literal", "x": 350, "y": 280, "properties": {"value": "100"}}
+          {"id": "node-2", "name": "Set Vida", "type": "variable_set", "x": 350, "y": 200, "codeSnippet": "vida = 100;"},
+          {"id": "node-3", "name": "100", "type": "literal", "x": 350, "y": 280, "properties": {"value": "100"}, "codeSnippet": "100"}
         ],
         "connections": [
           {"fromNodeId": "node-1", "toNodeId": "node-2", "type": "exec"},
