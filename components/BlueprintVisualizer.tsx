@@ -1,42 +1,63 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import type { GraphData, GraphNode } from '../services/geminiService';
+import type { GraphData, GraphNode, GraphPin } from '../services/geminiService';
 import { PaletteIcon, XIcon } from './icons';
 
 interface BlueprintVisualizerProps {
   graphData: GraphData;
 }
 
-const NODE_WIDTH = 200;
+const NODE_WIDTH = 220;
 const NODE_HEADER_HEIGHT = 30;
-const NODE_PIN_AREA_HEIGHT = 20;
-const TOTAL_NODE_HEIGHT = NODE_HEADER_HEIGHT + NODE_PIN_AREA_HEIGHT * 2; // Simplified height
+const PIN_HEIGHT = 22;
+const PIN_OFFSET_Y = 10;
+const PIN_TEXT_OFFSET = 15;
+const PIN_SIZE = 6;
 
 const INITIAL_NODE_COLORS = {
-  event: '#C0392B',
-  function: '#2980B9',
-  flow_control: '#8E44AD',
-  variable_get: '#16A085',
-  variable_set: '#1ABC9C',
-  literal: '#27AE60',
-  default: '#7F8C8D',
+  event: '#A93226',
+  function: '#1F618D',
+  flow_control: '#7D3C98',
+  variable_get: '#148F77',
+  variable_set: '#117A65',
+  literal: '#1E8449',
+  default: '#566573',
 };
 
-const getPinPosition = (node: GraphNode, type: string, direction: 'in' | 'out') => {
-    if (type === 'exec') {
-        const y = node.y + NODE_HEADER_HEIGHT / 2;
-        const x = direction === 'in' ? node.x : node.x + NODE_WIDTH;
-        return { x, y };
-    }
-    // Data pins
-    const y = node.y + NODE_HEADER_HEIGHT + NODE_PIN_AREA_HEIGHT;
-    const x = direction === 'in' ? node.x : node.x + NODE_WIDTH;
+const DATA_TYPE_COLORS: { [key: string]: string } = {
+    'Exec': '#FFFFFF',
+    'Boolean': '#C0392B',
+    'Integer': '#2ECC71',
+    'Float': '#1ABC9C',
+    'String': '#F39C12',
+    'Name': '#D2B4DE',
+    'Vector': '#F1C40F',
+    'Rotator': '#A569BD',
+    'Transform': '#E67E22',
+    'Object': '#3498DB',
+    'default': '#95A5A6'
+};
+
+const calculateNodeHeight = (node: GraphNode) => {
+    const inputPins = node.pins.filter(p => p.direction === 'in').length;
+    const outputPins = node.pins.filter(p => p.direction === 'out').length;
+    return NODE_HEADER_HEIGHT + PIN_OFFSET_Y + Math.max(inputPins, outputPins) * PIN_HEIGHT;
+};
+
+const getPinPosition = (node: GraphNode, pinId: string): { x: number, y: number } => {
+    const pin = node.pins.find(p => p.id === pinId);
+    if (!pin) return { x: node.x, y: node.y };
+
+    const pinsInSameDirection = node.pins.filter(p => p.direction === pin.direction);
+    const pinIndex = pinsInSameDirection.findIndex(p => p.id === pinId);
+
+    const x = pin.direction === 'in' ? node.x : node.x + NODE_WIDTH;
+    const y = node.y + NODE_HEADER_HEIGHT + PIN_OFFSET_Y + (pinIndex * PIN_HEIGHT) + (PIN_HEIGHT / 2);
+
     return { x, y };
 };
 
-const NodeDetailPanel = ({ node, graphData, onClose, nodeMap }: { node: GraphNode, graphData: GraphData, onClose: () => void, nodeMap: Map<string, GraphNode> }) => {
-    const incomingConnections = graphData.connections.filter(c => c.toNodeId === node.id);
-    const outgoingConnections = graphData.connections.filter(c => c.fromNodeId === node.id);
 
+const NodeDetailPanel = ({ node, graphData, onClose }: { node: GraphNode, graphData: GraphData, onClose: () => void }) => {
     return (
         <div className="absolute top-0 right-0 h-full w-80 bg-slate-800/95 border-l border-slate-600 shadow-2xl z-30 p-4 text-white flex flex-col transition-transform transform translate-x-0">
             <div className="flex justify-between items-center border-b border-slate-600 pb-2 mb-4">
@@ -57,21 +78,16 @@ const NodeDetailPanel = ({ node, graphData, onClose, nodeMap }: { node: GraphNod
                     </div>
                 )}
                 <div className="mb-4">
-                    <h4 className="font-semibold text-slate-400 text-sm mb-2">Conexões</h4>
-                    <div className="text-xs space-y-2">
-                        <p className="font-bold">Entrada:</p>
-                        {incomingConnections.length > 0 ? (
-                            <ul className="list-disc list-inside pl-2">
-                                {incomingConnections.map((c, i) => <li key={i}>{nodeMap.get(c.fromNodeId)?.name} ({c.type})</li>)}
-                            </ul>
-                        ) : <p className="pl-2">Nenhuma</p>}
-                        <p className="font-bold pt-2">Saída:</p>
-                        {outgoingConnections.length > 0 ? (
-                             <ul className="list-disc list-inside pl-2">
-                                {outgoingConnections.map((c, i) => <li key={i}>{nodeMap.get(c.toNodeId)?.name} ({c.type})</li>)}
-                            </ul>
-                        ) : <p className="pl-2">Nenhuma</p>}
-                    </div>
+                    <h4 className="font-semibold text-slate-400 text-sm mb-2">Pinos</h4>
+                     {node.pins.map(pin => (
+                        <div key={pin.id} className="text-xs mb-1 flex items-center">
+                            <div className="w-4 h-4 mr-2 flex items-center justify-center">
+                                {pin.direction === 'in' ? '→' : '←'}
+                            </div>
+                            <span className="font-bold mr-2" style={{color: DATA_TYPE_COLORS[pin.dataType] || DATA_TYPE_COLORS.default}}>{pin.dataType}</span>
+                            <span>{pin.name || '(Exec)'}</span>
+                        </div>
+                     ))}
                 </div>
 
                 {node.codeSnippet && (
@@ -106,15 +122,33 @@ export const BlueprintVisualizer: React.FC<BlueprintVisualizerProps> = ({ graphD
         setViewTransform({ x: 50, y: 50, scale: 1 });
         setSelectedNode(null);
     }, [graphData]);
+    
+    const nodeMap = useRef(new Map<string, GraphNode>()).current;
+    const pinMap = useRef(new Map<string, GraphPin>()).current;
+    const pinToNodeMap = useRef(new Map<string, GraphNode>()).current;
+
+    useEffect(() => {
+        nodeMap.clear();
+        pinMap.clear();
+        pinToNodeMap.clear();
+        localGraphData.nodes.forEach(node => {
+            nodeMap.set(node.id, node);
+            node.pins.forEach(pin => {
+                pinMap.set(pin.id, pin);
+                pinToNodeMap.set(pin.id, node);
+            });
+        });
+    }, [localGraphData.nodes, nodeMap, pinMap, pinToNodeMap]);
+
 
     const handleNodeMouseDown = useCallback((e: React.MouseEvent, nodeId: string) => {
         e.stopPropagation();
-        const node = localGraphData.nodes.find(n => n.id === nodeId);
+        const node = nodeMap.get(nodeId);
         if (!node) return;
         setDraggingNode({ id: nodeId, initialX: node.x, initialY: node.y });
         interactionStartRef.current = { x: e.clientX, y: e.clientY };
         wasDraggedRef.current = false;
-    }, [localGraphData.nodes]);
+    }, [nodeMap]);
     
     const handleBackgroundMouseDown = useCallback((e: React.MouseEvent) => {
         if (e.target === e.currentTarget) {
@@ -132,17 +166,18 @@ export const BlueprintVisualizer: React.FC<BlueprintVisualizerProps> = ({ graphD
         if (draggingNode) {
             if(Math.abs(dx) > 5 || Math.abs(dy) > 5) {
                 wasDraggedRef.current = true;
+                 setSelectedNode(null);
             }
 
             const newX = draggingNode.initialX + dx / viewTransform.scale;
             const newY = draggingNode.initialY + dy / viewTransform.scale;
             
-            setLocalGraphData(prevData => ({
-                ...prevData,
-                nodes: prevData.nodes.map(node =>
+            setLocalGraphData(prevData => {
+                 const newNodes = prevData.nodes.map(node =>
                     node.id === draggingNode.id ? { ...node, x: newX, y: newY } : node
-                )
-            }));
+                );
+                return {...prevData, nodes: newNodes};
+            });
         } else if (isPanning) {
             setViewTransform(prev => ({ ...prev, x: prev.x + dx, y: prev.y + dy }));
             interactionStartRef.current = { x: e.clientX, y: e.clientY };
@@ -151,12 +186,12 @@ export const BlueprintVisualizer: React.FC<BlueprintVisualizerProps> = ({ graphD
 
     const handleMouseUp = useCallback(() => {
         if (draggingNode && !wasDraggedRef.current) {
-            const node = localGraphData.nodes.find(n => n.id === draggingNode.id);
+            const node = nodeMap.get(draggingNode.id);
             setSelectedNode(node || null);
         }
         setIsPanning(false);
         setDraggingNode(null);
-    }, [draggingNode, localGraphData.nodes]);
+    }, [draggingNode, nodeMap]);
 
     const handleWheel = useCallback((e: React.WheelEvent) => {
         e.preventDefault();
@@ -184,8 +219,7 @@ export const BlueprintVisualizer: React.FC<BlueprintVisualizerProps> = ({ graphD
     if (!localGraphData || !localGraphData.nodes || localGraphData.nodes.length === 0) {
         return <div className="p-4 text-slate-500">Não há dados para visualizar.</div>;
     }
-
-    const nodeMap = new Map<string, GraphNode>(localGraphData.nodes.map(node => [node.id, node]));
+    
     const cursorClass = isPanning ? 'cursor-grabbing' : draggingNode ? 'cursor-grabbing' : 'cursor-grab';
 
     return (
@@ -225,60 +259,78 @@ export const BlueprintVisualizer: React.FC<BlueprintVisualizerProps> = ({ graphD
                 </div>
             )}
 
-            <svg 
-                ref={svgRef} 
-                width="100%" 
-                height="100%" 
-                onMouseDown={handleBackgroundMouseDown}
-            >
-                <defs>
-                    <marker id="arrow-exec" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
-                        <path d="M 0 0 L 10 5 L 0 10 z" fill="white" />
-                    </marker>
-                    <marker id="arrow-data" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
-                        <path d="M 0 0 L 10 5 L 0 10 z" fill="#3498DB" />
-                    </marker>
-                </defs>
+            <svg ref={svgRef} width="100%" height="100%" onMouseDown={handleBackgroundMouseDown}>
                 <g transform={`translate(${viewTransform.x}, ${viewTransform.y}) scale(${viewTransform.scale})`}>
                     {localGraphData.connections.map((conn, index) => {
-                        const fromNode = nodeMap.get(conn.fromNodeId);
-                        const toNode = nodeMap.get(conn.toNodeId);
-                        if (!fromNode || !toNode) return null;
+                        const fromNode = pinToNodeMap.get(conn.fromPinId);
+                        const toNode = pinToNodeMap.get(conn.toPinId);
+                        const fromPin = pinMap.get(conn.fromPinId);
+                        if (!fromNode || !toNode || !fromPin) return null;
                         
-                        const start = getPinPosition(fromNode, conn.type, 'out');
-                        const end = getPinPosition(toNode, conn.type, 'in');
+                        const start = getPinPosition(fromNode, conn.fromPinId);
+                        const end = getPinPosition(toNode, conn.toPinId);
                         
-                        const c1x = start.x + Math.abs(end.x - start.x) * 0.5;
+                        const c1x = start.x + Math.abs(end.x - start.x) * 0.6;
                         const c1y = start.y;
-                        const c2x = end.x - Math.abs(end.x - start.x) * 0.5;
+                        const c2x = end.x - Math.abs(end.x - start.x) * 0.6;
                         const c2y = end.y;
 
                         const pathData = `M ${start.x} ${start.y} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${end.x} ${end.y}`;
+                        const strokeColor = fromPin.type === 'exec' ? '#FFFFFF' : (DATA_TYPE_COLORS[fromPin.dataType] || DATA_TYPE_COLORS.default);
+                        const strokeWidth = fromPin.type === 'exec' ? 2.5 : 2;
 
-                        return ( <path key={`${conn.fromNodeId}-${conn.toNodeId}-${index}`} d={pathData} stroke={conn.type === 'exec' ? 'white' : '#3498DB'} strokeWidth={conn.type === 'exec' ? 2.5 : 2} fill="none" markerEnd={conn.type === 'exec' ? "url(#arrow-exec)" : "url(#arrow-data)"} /> );
+                        return ( <path key={`${conn.fromPinId}-${conn.toPinId}-${index}`} d={pathData} stroke={strokeColor} strokeWidth={strokeWidth} fill="none" /> );
                     })}
 
-                    {localGraphData.nodes.map(node => (
+                    {localGraphData.nodes.map(node => {
+                        const nodeHeight = calculateNodeHeight(node);
+                        return (
                         <g key={node.id} transform={`translate(${node.x}, ${node.y})`} onMouseDown={(e) => handleNodeMouseDown(e, node.id)} className="cursor-grab">
                             {selectedNode?.id === node.id && (
-                                <rect width={NODE_WIDTH + 8} height={TOTAL_NODE_HEIGHT + 8} x="-4" y="-4" rx="12" fill="none" stroke="#0EA5E9" strokeWidth="2.5" strokeDasharray="4 4" >
+                                <rect width={NODE_WIDTH + 8} height={nodeHeight + 8} x="-4" y="-4" rx="12" fill="none" stroke="#0EA5E9" strokeWidth="2" strokeDasharray="4 4" >
                                      <animate attributeName="stroke-dashoffset" from="0" to="8" dur="0.5s" repeatCount="indefinite" />
                                 </rect>
                             )}
-                            <rect width={NODE_WIDTH} height={TOTAL_NODE_HEIGHT} rx="8" fill="#2C3E50" stroke="#1C2833" strokeWidth="1" />
+                            <rect width={NODE_WIDTH} height={nodeHeight} rx="8" fill="#2C3E50" stroke="#1C2833" strokeWidth="1.5" />
                             <rect width={NODE_WIDTH} height={NODE_HEADER_HEIGHT} rx="8" ry="8" fill={nodeColors[node.type as keyof typeof nodeColors] || nodeColors.default} />
                             <text x={NODE_WIDTH / 2} y={NODE_HEADER_HEIGHT / 2} textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="14" fontWeight="bold" className="pointer-events-none select-none" >
                                 {node.name}
                             </text>
-                            <circle cx={0} cy={NODE_HEADER_HEIGHT/2} r="5" fill={nodeColors.flow_control} stroke="white" strokeWidth="1" />
-                            <circle cx={NODE_WIDTH} cy={NODE_HEADER_HEIGHT/2} r="5" fill={nodeColors.flow_control} stroke="white" strokeWidth="1" />
-                            <circle cx={0} cy={NODE_HEADER_HEIGHT + NODE_PIN_AREA_HEIGHT} r="5" fill="#3498DB" />
-                            <circle cx={NODE_WIDTH} cy={NODE_HEADER_HEIGHT + NODE_PIN_AREA_HEIGHT} r="5" fill="#3498DB" />
+
+                            {node.pins.map(pin => {
+                                const pos = getPinPosition(node, pin.id);
+                                const pinY = pos.y - node.y;
+                                const pinColor = DATA_TYPE_COLORS[pin.dataType] || DATA_TYPE_COLORS.default;
+                                return (
+                                <g key={pin.id}>
+                                    {pin.type === 'exec' ? (
+                                        <path 
+                                            d={pin.direction === 'in' ? `M ${-PIN_SIZE} ${pinY-PIN_SIZE} H ${PIN_SIZE} L ${PIN_SIZE*2} ${pinY} L ${PIN_SIZE} ${pinY+PIN_SIZE} H ${-PIN_SIZE} Z` : `M ${NODE_WIDTH-PIN_SIZE} ${pinY-PIN_SIZE} H ${NODE_WIDTH+PIN_SIZE} L ${NODE_WIDTH+PIN_SIZE*2} ${pinY} L ${NODE_WIDTH+PIN_SIZE} ${pinY+PIN_SIZE} H ${NODE_WIDTH-PIN_SIZE} Z`}
+                                            fill={pinColor}
+                                        />
+                                    ) : (
+                                        <circle cx={pin.direction === 'in' ? 0 : NODE_WIDTH} cy={pinY} r={PIN_SIZE} fill={pinColor} />
+                                    )}
+                                    <text
+                                        x={pin.direction === 'in' ? PIN_TEXT_OFFSET : NODE_WIDTH - PIN_TEXT_OFFSET}
+                                        y={pinY}
+                                        textAnchor={pin.direction === 'in' ? 'start' : 'end'}
+                                        dominantBaseline="middle"
+                                        fill="#E0E0E0"
+                                        fontSize="12"
+                                        className="pointer-events-none select-none"
+                                    >
+                                        {pin.name}
+                                    </text>
+                                </g>
+                                );
+                            })}
+
                         </g>
-                    ))}
+                    )})}
                 </g>
             </svg>
-            {selectedNode && <NodeDetailPanel node={selectedNode} graphData={localGraphData} onClose={() => setSelectedNode(null)} nodeMap={nodeMap} />}
+            {selectedNode && <NodeDetailPanel node={selectedNode} graphData={localGraphData} onClose={() => setSelectedNode(null)} />}
         </div>
     );
 };

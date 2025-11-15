@@ -2,6 +2,14 @@ import { GoogleGenAI, Type } from "@google/genai";
 
 // --- Data Structures for Blueprint Visualization ---
 
+export interface GraphPin {
+  id: string;
+  name: string;
+  type: 'exec' | 'data';
+  direction: 'in' | 'out';
+  dataType: string; // e.g., 'Integer', 'Boolean', 'Exec', 'String', 'Object'
+}
+
 export interface GraphNode {
   id: string;
   name: string;
@@ -10,12 +18,12 @@ export interface GraphNode {
   y: number;
   properties?: { value?: string };
   codeSnippet?: string;
+  pins: GraphPin[];
 }
 
 export interface GraphConnection {
-  fromNodeId: string;
-  toNodeId: string;
-  type: 'exec' | 'data';
+  fromPinId: string;
+  toPinId: string;
 }
 
 export interface GraphVariable {
@@ -62,17 +70,25 @@ const responseSchema = {
               y: { type: Type.NUMBER },
               properties: {
                 type: Type.OBJECT,
-                description: "Propriedades adicionais para o nó, como o valor de um literal.",
-                properties: {
-                    value: { type: Type.STRING, description: "O valor de um nó literal." }
-                },
+                properties: { value: { type: Type.STRING } },
               },
-              codeSnippet: {
-                type: Type.STRING,
-                description: "O trecho de código C++ original que corresponde a este nó."
+              codeSnippet: { type: Type.STRING },
+              pins: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    id: { type: Type.STRING },
+                    name: { type: Type.STRING },
+                    type: { type: Type.STRING, description: "'exec' ou 'data'" },
+                    direction: { type: Type.STRING, description: "'in' ou 'out'" },
+                    dataType: { type: Type.STRING, description: "Tipo de dado do pino, e.g., 'Integer', 'Boolean', 'Exec'" }
+                  },
+                  required: ['id', 'name', 'type', 'direction', 'dataType']
+                }
               }
             },
-            required: ['id', 'name', 'type', 'x', 'y']
+            required: ['id', 'name', 'type', 'x', 'y', 'pins']
           }
         },
         connections: {
@@ -80,11 +96,10 @@ const responseSchema = {
           items: {
             type: Type.OBJECT,
             properties: {
-              fromNodeId: { type: Type.STRING },
-              toNodeId: { type: Type.STRING },
-              type: { type: Type.STRING }
+              fromPinId: { type: Type.STRING },
+              toPinId: { type: Type.STRING }
             },
-            required: ['fromNodeId', 'toNodeId', 'type']
+            required: ['fromPinId', 'toPinId']
           }
         },
         variables: {
@@ -114,36 +129,49 @@ export const generateBlueprintGuide = async (cppCode: string): Promise<Blueprint
   const model = "gemini-2.5-pro";
 
   const prompt = `
-    Você é um desenvolvedor especialista em Unreal Engine 5, mestre em Blueprints. Sua tarefa é analisar o código C++ fornecido e gerar duas saídas:
-    1. Um guia detalhado em formato Markdown sobre como replicar a funcionalidade em Blueprints.
-    2. Dados estruturados em JSON para visualizar o grafo de Blueprints.
-
-    Sua resposta DEVE ser um único objeto JSON VÁLIDO, sem nenhuma formatação ou texto extra como markdown backticks (\`\`\`), que corresponda ao schema fornecido.
+    Você é um desenvolvedor especialista em Unreal Engine 5, mestre em Blueprints. Sua tarefa é analisar o código C++ e gerar um guia e dados para um grafo de Blueprints.
+    Sua resposta DEVE ser um único objeto JSON VÁLIDO que corresponda ao schema.
 
     **Regras para o Guia (Markdown):**
-    - Use cabeçalhos (##, ###) para organização.
-    - Use listas numeradas para passos.
-    - Destaque nomes de nós, variáveis e pinos com \`backticks\`.
+    - Use cabeçalhos e listas. Destaque nomes de nós com \`backticks\`.
 
     **Regras para o 'graphData' (JSON):**
-    - **nodes**: 'id' deve ser único. 'type' pode ser 'event', 'function', 'variable_get', 'variable_set', 'flow_control', ou 'literal'. As coordenadas 'x' e 'y' devem criar um layout legível da esquerda para a direita. O campo 'properties' é opcional e só deve ser usado para nós do tipo 'literal' para especificar seu valor. O campo 'codeSnippet' (opcional) DEVE conter a linha ou bloco de código C++ exato que resultou na criação deste nó; isso é crucial para mapear a visualização de volta ao código-fonte.
-    - **connections**: Conecte nós usando seus 'id's. 'type' pode ser 'exec' (fluxo de execução) ou 'data' (fluxo de dados).
-    - **variables**: Liste todas as variáveis necessárias com seu nome e tipo (ex: 'Integer', 'Boolean').
+    - **nodes**: Cada nó deve ter uma lista de 'pins'.
+      - **pins**: Cada pino deve ter um 'id' único globalmente, 'name', 'type' ('exec' ou 'data'), 'direction' ('in' ou 'out') e 'dataType' (e.g., 'Exec', 'Integer', 'Boolean', 'String'). Pinos 'Exec' devem ter dataType 'Exec'.
+    - **connections**: Conecte nós usando 'fromPinId' e 'toPinId'. A conexão deve ser entre um pino 'out' e um pino 'in' compatível.
+    - **codeSnippet**: O campo 'codeSnippet' (opcional) no nó DEVE conter a linha de código C++ exata que resultou na criação do nó.
 
     **Exemplo de Resposta JSON Esperada:**
     \`\`\`json
     {
-      "guide": "## Visão Geral\\nCrie uma variável para armazenar a vida do jogador...",
+      "guide": "## Visão Geral\\nCrie uma variável para vida...",
       "graphData": {
         "variables": [{"name": "Vida", "type": "Integer"}],
         "nodes": [
-          {"id": "node-1", "name": "Event BeginPlay", "type": "event", "x": 100, "y": 200},
-          {"id": "node-2", "name": "Set Vida", "type": "variable_set", "x": 350, "y": 200, "codeSnippet": "vida = 100;"},
-          {"id": "node-3", "name": "100", "type": "literal", "x": 350, "y": 280, "properties": {"value": "100"}, "codeSnippet": "100"}
+          {
+            "id": "node-1", "name": "Event BeginPlay", "type": "event", "x": 100, "y": 200,
+            "pins": [
+              {"id": "pin-1-exec-out", "name": "", "type": "exec", "direction": "out", "dataType": "Exec"}
+            ]
+          },
+          {
+            "id": "node-2", "name": "Set Vida", "type": "variable_set", "x": 350, "y": 200, "codeSnippet": "vida = 100;",
+            "pins": [
+              {"id": "pin-2-exec-in", "name": "", "type": "exec", "direction": "in", "dataType": "Exec"},
+              {"id": "pin-2-exec-out", "name": "", "type": "exec", "direction": "out", "dataType": "Exec"},
+              {"id": "pin-2-data-in", "name": "Vida", "type": "data", "direction": "in", "dataType": "Integer"}
+            ]
+          },
+          {
+            "id": "node-3", "name": "100", "type": "literal", "x": 300, "y": 280, "properties": {"value": "100"}, "codeSnippet": "100",
+            "pins": [
+              {"id": "pin-3-data-out", "name": "", "type": "data", "direction": "out", "dataType": "Integer"}
+            ]
+          }
         ],
         "connections": [
-          {"fromNodeId": "node-1", "toNodeId": "node-2", "type": "exec"},
-          {"fromNodeId": "node-3", "toNodeId": "node-2", "type": "data"}
+          {"fromPinId": "pin-1-exec-out", "toPinId": "pin-2-exec-in"},
+          {"fromPinId": "pin-3-data-out", "toPinId": "pin-2-data-in"}
         ]
       }
     }
