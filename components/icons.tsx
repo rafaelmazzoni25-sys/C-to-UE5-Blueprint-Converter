@@ -1,4 +1,3 @@
-
 import React from 'react';
 
 export const MagicWandIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
@@ -76,5 +75,26 @@ export const ShareNodesIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) =
         <circle cx="18" cy="19" r="3" />
         <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
         <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+    </svg>
+);
+
+export const PaletteIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+    <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width="24"
+        height="24"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        {...props}
+    >
+        <circle cx="13.5" cy="6.5" r=".5" fill="currentColor" />
+        <circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
+        <circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
+        <circle cx="10.5" cy="12.5" r=".5" fill="currentColor" />
+        <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.667 0-.422-.182-.833-.476-1.12-.297-.29-.703-.478-1.128-.478H12c-4.4 0-8-3.6-8-8s3.6-8 8-8c.926 0 1.648.746 1.648 1.667 0 .422-.182.833-.476 1.12-.297.29-.703.478-1.128.478H12" />
     </svg>
 );
