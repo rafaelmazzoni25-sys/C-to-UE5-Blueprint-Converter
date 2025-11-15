@@ -1,5 +1,4 @@
-
-import React from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { GraphData, GraphNode } from '../services/geminiService';
 
 interface BlueprintVisualizerProps {
@@ -21,8 +20,6 @@ const NODE_COLORS = {
   default: '#7F8C8D',
 };
 
-// FIX: The `type` parameter is changed to `string` to match the data from the API.
-// The previous literal type was causing a TypeScript type inference issue.
 const getPinPosition = (node: GraphNode, type: string, direction: 'in' | 'out') => {
     if (type === 'exec') {
         const y = node.y + NODE_HEADER_HEIGHT / 2;
@@ -36,27 +33,103 @@ const getPinPosition = (node: GraphNode, type: string, direction: 'in' | 'out') 
 };
 
 export const BlueprintVisualizer: React.FC<BlueprintVisualizerProps> = ({ graphData }) => {
-    if (!graphData || !graphData.nodes || graphData.nodes.length === 0) {
+    // Use local state to allow for interactive modifications like dragging.
+    const [localGraphData, setLocalGraphData] = useState<GraphData>(graphData);
+    
+    // State to track the node being dragged.
+    const [draggingNode, setDraggingNode] = useState<{
+        id: string; // ID of the node being dragged
+        offsetX: number; // Mouse offset from the node's top-left corner
+        offsetY: number;
+    } | null>(null);
+    
+    const svgRef = useRef<SVGSVGElement>(null);
+
+    // Synchronize local state with incoming props. This is crucial for when
+    // a new blueprint is generated.
+    useEffect(() => {
+        setLocalGraphData(graphData);
+    }, [graphData]);
+
+    // Helper function to get mouse coordinates relative to the SVG canvas.
+    const getSVGPoint = useCallback((e: React.MouseEvent): { x: number; y: number } => {
+        if (!svgRef.current) return { x: 0, y: 0 };
+        const point = svgRef.current.createSVGPoint();
+        point.x = e.clientX;
+        point.y = e.clientY;
+        const ctm = svgRef.current.getScreenCTM()?.inverse();
+        if (ctm) {
+            return point.matrixTransform(ctm);
+        }
+        return { x: 0, y: 0 };
+    }, []);
+
+    // Initiates a drag operation when the user clicks on a node.
+    const handleMouseDown = useCallback((e: React.MouseEvent, nodeId: string) => {
+        const node = localGraphData.nodes.find(n => n.id === nodeId);
+        if (!node) return;
+        
+        e.preventDefault();
+        
+        const point = getSVGPoint(e);
+        setDraggingNode({
+            id: nodeId,
+            offsetX: point.x - node.x,
+            offsetY: point.y - node.y,
+        });
+    }, [localGraphData.nodes, getSVGPoint]);
+
+    // Updates the position of the dragged node as the mouse moves.
+    const handleMouseMove = useCallback((e: React.MouseEvent) => {
+        if (!draggingNode) return;
+        e.preventDefault();
+
+        const point = getSVGPoint(e);
+        const newX = point.x - draggingNode.offsetX;
+        const newY = point.y - draggingNode.offsetY;
+
+        setLocalGraphData(prevData => {
+            const newNodes = prevData.nodes.map(node =>
+                node.id === draggingNode.id ? { ...node, x: newX, y: newY } : node
+            );
+            return { ...prevData, nodes: newNodes };
+        });
+    }, [draggingNode, getSVGPoint]);
+
+    // Ends the drag operation when the user releases the mouse button.
+    const handleMouseUp = useCallback((e: React.MouseEvent) => {
+        e.preventDefault();
+        setDraggingNode(null);
+    }, []);
+    
+    if (!localGraphData || !localGraphData.nodes || localGraphData.nodes.length === 0) {
         return <div className="p-4 text-slate-500">Não há dados para visualizar.</div>;
     }
 
-    // FIX: Explicitly type `nodeMap` to prevent `nodeMap.get()` from returning `unknown`.
-    const nodeMap = new Map<string, GraphNode>(graphData.nodes.map(node => [node.id, node]));
+    // A map for quick node lookups when rendering connections.
+    const nodeMap = new Map<string, GraphNode>(localGraphData.nodes.map(node => [node.id, node]));
 
-    // Calculate viewBox dimensions
+    // Dynamically calculate the SVG viewbox to fit all content.
     let maxX = 0;
     let maxY = 0;
-    graphData.nodes.forEach(node => {
+    localGraphData.nodes.forEach(node => {
         if (node.x + NODE_WIDTH > maxX) maxX = node.x + NODE_WIDTH;
         if (node.y + TOTAL_NODE_HEIGHT > maxY) maxY = node.y + TOTAL_NODE_HEIGHT;
     });
     const padding = 50;
-    const viewBoxWidth = maxX + padding * 2;
-    const viewBoxHeight = maxY + padding;
+    const viewBoxWidth = Math.max(maxX + padding * 2, 500); // Ensure a minimum width
+    const viewBoxHeight = Math.max(maxY + padding * 2, 500); // Ensure a minimum height
 
     return (
-        <div className="w-full h-full bg-slate-900/70 rounded-md overflow-auto">
-            <svg width={viewBoxWidth} height={viewBoxHeight} className="min-w-full min-h-full">
+        <div
+            className={`w-full h-full bg-slate-900/70 rounded-md overflow-auto ${draggingNode ? 'cursor-grabbing' : ''}`}
+            // These event handlers are on the container to capture mouse events
+            // even if the cursor moves off the dragged node.
+            onMouseMove={draggingNode ? handleMouseMove : undefined}
+            onMouseUp={draggingNode ? handleMouseUp : undefined}
+            onMouseLeave={draggingNode ? handleMouseUp : undefined}
+        >
+            <svg ref={svgRef} width={viewBoxWidth} height={viewBoxHeight} className="min-w-full min-h-full">
                 <defs>
                     <marker id="arrow-exec" viewBox="0 0 10 10" refX="8" refY="5"
                         markerWidth="5" markerHeight="5" orient="auto-start-reverse">
@@ -67,9 +140,9 @@ export const BlueprintVisualizer: React.FC<BlueprintVisualizerProps> = ({ graphD
                         <path d="M 0 0 L 10 5 L 0 10 z" fill="#3498DB" />
                     </marker>
                 </defs>
-                <g transform={`translate(${padding}, ${padding / 2})`}>
+                <g transform={`translate(${padding}, ${padding})`}>
                     {/* Connections */}
-                    {graphData.connections.map((conn, index) => {
+                    {localGraphData.connections.map((conn, index) => {
                         const fromNode = nodeMap.get(conn.fromNodeId);
                         const toNode = nodeMap.get(conn.toNodeId);
 
@@ -98,8 +171,13 @@ export const BlueprintVisualizer: React.FC<BlueprintVisualizerProps> = ({ graphD
                     })}
 
                     {/* Nodes */}
-                    {graphData.nodes.map(node => (
-                        <g key={node.id} transform={`translate(${node.x}, ${node.y})`}>
+                    {localGraphData.nodes.map(node => (
+                        <g 
+                            key={node.id} 
+                            transform={`translate(${node.x}, ${node.y})`}
+                            onMouseDown={(e) => handleMouseDown(e, node.id)}
+                            className="cursor-grab"
+                        >
                             <rect
                                 width={NODE_WIDTH}
                                 height={TOTAL_NODE_HEIGHT}
@@ -114,7 +192,6 @@ export const BlueprintVisualizer: React.FC<BlueprintVisualizerProps> = ({ graphD
                                 rx="8"
                                 ry="8"
                                 fill={NODE_COLORS[node.type as keyof typeof NODE_COLORS] || NODE_COLORS.default}
-                                className="cursor-pointer"
                             />
                             <text
                                 x={NODE_WIDTH / 2}
