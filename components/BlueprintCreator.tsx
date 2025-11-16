@@ -3,7 +3,7 @@ import React, { useState, useCallback } from 'react';
 import { generateCppCode, GraphData, GraphNode, CppCodeResponse, GraphVariable, GraphPin } from '../services/geminiService';
 import { BlueprintVisualizer } from './BlueprintVisualizer';
 import { CppCodeDisplay } from './CppCodeDisplay';
-import { MagicWandIcon, PlusIcon, TrashIcon, VariableIcon, BoltIcon, FunctionIcon, EditIcon, GitBranchIcon } from './icons';
+import { MagicWandIcon, PlusIcon, TrashIcon, VariableIcon, BoltIcon, FunctionIcon, EditIcon, BlocksIcon } from './icons';
 
 interface CustomEvent {
     id: string;
@@ -79,52 +79,50 @@ const initialGraphData: GraphData = {
 const generateId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 const variableTypes = ['Boolean', 'Integer', 'Float', 'String', 'Vector', 'Rotator', 'Transform', 'Name'];
 
-const commonNodes = [
+const nodeLibrary = [
   {
-    name: 'Branch',
-    type: 'flow_control',
-    pins: [
-      { name: '', type: 'exec', direction: 'in', dataType: 'Exec' },
-      { name: 'Condition', type: 'data', direction: 'in', dataType: 'Boolean' },
-      { name: 'True', type: 'exec', direction: 'out', dataType: 'Exec' },
-      { name: 'False', type: 'exec', direction: 'out', dataType: 'Exec' },
+    category: 'Flow Control',
+    nodes: [
+      { name: 'Branch', type: 'flow_control' as const, pins: [ { name: '', type: 'exec' as const, direction: 'in' as const, dataType: 'Exec' }, { name: 'Condition', type: 'data' as const, direction: 'in' as const, dataType: 'Boolean' }, { name: 'True', type: 'exec' as const, direction: 'out' as const, dataType: 'Exec' }, { name: 'False', type: 'exec' as const, direction: 'out' as const, dataType: 'Exec' } ] },
+      { name: 'Sequence', type: 'flow_control' as const, pins: [ { name: '', type: 'exec' as const, direction: 'in' as const, dataType: 'Exec' }, { name: 'Then 0', type: 'exec' as const, direction: 'out' as const, dataType: 'Exec' }, { name: 'Then 1', type: 'exec' as const, direction: 'out' as const, dataType: 'Exec' } ] },
+      { name: 'For Loop', type: 'flow_control' as const, pins: [ { name: '', type: 'exec' as const, direction: 'in' as const, dataType: 'Exec' }, { name: 'First Index', type: 'data' as const, direction: 'in' as const, dataType: 'Integer' }, { name: 'Last Index', type: 'data' as const, direction: 'in' as const, dataType: 'Integer' }, { name: 'Loop Body', type: 'exec' as const, direction: 'out' as const, dataType: 'Exec' }, { name: 'Index', type: 'data' as const, direction: 'out' as const, dataType: 'Integer' }, { name: 'Completed', type: 'exec' as const, direction: 'out' as const, dataType: 'Exec' } ] },
+      { name: 'Delay', type: 'function' as const, pins: [ { name: '', type: 'exec' as const, direction: 'in' as const, dataType: 'Exec' }, { name: 'Duration', type: 'data' as const, direction: 'in' as const, dataType: 'Float' }, { name: 'Completed', type: 'exec' as const, direction: 'out' as const, dataType: 'Exec' } ] }
     ]
   },
   {
-    name: 'AND Boolean',
-    type: 'function',
-    pins: [
-      { name: 'A', type: 'data', direction: 'in', dataType: 'Boolean' },
-      { name: 'B', type: 'data', direction: 'in', dataType: 'Boolean' },
-      { name: 'Return Value', type: 'data', direction: 'out', dataType: 'Boolean' },
+    category: 'Boolean Logic',
+    nodes: [
+      { name: 'AND Boolean', type: 'function' as const, pins: [ { name: 'A', type: 'data' as const, direction: 'in' as const, dataType: 'Boolean' }, { name: 'B', type: 'data' as const, direction: 'in' as const, dataType: 'Boolean' }, { name: 'Return Value', type: 'data' as const, direction: 'out' as const, dataType: 'Boolean' } ] },
+      { name: 'OR Boolean', type: 'function' as const, pins: [ { name: 'A', type: 'data' as const, direction: 'in' as const, dataType: 'Boolean' }, { name: 'B', type: 'data' as const, direction: 'in' as const, dataType: 'Boolean' }, { name: 'Return Value', type: 'data' as const, direction: 'out' as const, dataType: 'Boolean' } ] },
+      { name: 'NOT Boolean', type: 'function' as const, pins: [ { name: 'Input', type: 'data' as const, direction: 'in' as const, dataType: 'Boolean' }, { name: 'Return Value', type: 'data' as const, direction: 'out' as const, dataType: 'Boolean' } ] },
     ]
   },
   {
-    name: 'OR Boolean',
-    type: 'function',
-    pins: [
-      { name: 'A', type: 'data', direction: 'in', dataType: 'Boolean' },
-      { name: 'B', type: 'data', direction: 'in', dataType: 'Boolean' },
-      { name: 'Return Value', type: 'data', direction: 'out', dataType: 'Boolean' },
+    category: 'Math (Integer)',
+    nodes: [
+      { name: 'Integer + Integer', type: 'function' as const, pins: [ { name: 'A', type: 'data' as const, direction: 'in' as const, dataType: 'Integer' }, { name: 'B', type: 'data' as const, direction: 'in' as const, dataType: 'Integer' }, { name: 'Return Value', type: 'data' as const, direction: 'out' as const, dataType: 'Integer' } ] },
+      { name: 'Integer - Integer', type: 'function' as const, pins: [ { name: 'A', type: 'data' as const, direction: 'in' as const, dataType: 'Integer' }, { name: 'B', type: 'data' as const, direction: 'in' as const, dataType: 'Integer' }, { name: 'Return Value', type: 'data' as const, direction: 'out' as const, dataType: 'Integer' } ] },
+      { name: 'Integer * Integer', type: 'function' as const, pins: [ { name: 'A', type: 'data' as const, direction: 'in' as const, dataType: 'Integer' }, { name: 'B', type: 'data' as const, direction: 'in' as const, dataType: 'Integer' }, { name: 'Return Value', type: 'data' as const, direction: 'out' as const, dataType: 'Integer' } ] },
+      { name: 'Integer / Integer', type: 'function' as const, pins: [ { name: 'A', type: 'data' as const, direction: 'in' as const, dataType: 'Integer' }, { name: 'B', type: 'data' as const, direction: 'in' as const, dataType: 'Integer' }, { name: 'Return Value', type: 'data' as const, direction: 'out' as const, dataType: 'Integer' } ] },
+      { name: 'Integer < Integer', type: 'function' as const, pins: [ { name: 'A', type: 'data' as const, direction: 'in' as const, dataType: 'Integer' }, { name: 'B', type: 'data' as const, direction: 'in' as const, dataType: 'Integer' }, { name: 'Return Value', type: 'data' as const, direction: 'out' as const, dataType: 'Boolean' } ] },
+      { name: 'Integer > Integer', type: 'function' as const, pins: [ { name: 'A', type: 'data' as const, direction: 'in' as const, dataType: 'Integer' }, { name: 'B', type: 'data' as const, direction: 'in' as const, dataType: 'Integer' }, { name: 'Return Value', type: 'data' as const, direction: 'out' as const, dataType: 'Boolean' } ] },
+      { name: 'Integer == Integer', type: 'function' as const, pins: [ { name: 'A', type: 'data' as const, direction: 'in' as const, dataType: 'Integer' }, { name: 'B', type: 'data' as const, direction: 'in' as const, dataType: 'Integer' }, { name: 'Return Value', type: 'data' as const, direction: 'out' as const, dataType: 'Boolean' } ] },
     ]
   },
   {
-    name: 'NOT Boolean',
-    type: 'function',
-    pins: [
-      { name: 'Input', type: 'data', direction: 'in', dataType: 'Boolean' },
-      { name: 'Return Value', type: 'data', direction: 'out', dataType: 'Boolean' },
+    category: 'Utilities',
+    nodes: [
+      { name: 'Print String', type: 'function' as const, pins: [ { name: '', type: 'exec' as const, direction: 'in' as const, dataType: 'Exec' }, { name: '', type: 'exec' as const, direction: 'out' as const, dataType: 'Exec' }, { name: 'In String', type: 'data' as const, direction: 'in' as const, dataType: 'String' } ] }
     ]
-  },
-] as const;
-
+  }
+];
 
 export const BlueprintCreator: React.FC = () => {
     const [graphData, setGraphData] = useState<GraphData>(initialGraphData);
     const [cppCode, setCppCode] = useState<CppCodeResponse | null>(null);
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
-    const [activeTab, setActiveTab] = useState<'variables' | 'events' | 'functions' | 'logic'>('variables');
+    const [activeTab, setActiveTab] = useState<'variables' | 'events' | 'functions' | 'nodes'>('variables');
     
     // State for variables
     const [newVariableName, setNewVariableName] = useState<string>('');
@@ -334,7 +332,7 @@ export const BlueprintCreator: React.FC = () => {
     const removeParam = (id: string) => setNewFunctionParams(prev => prev.filter(p => p.id !== id));
 
     // --- Common Node Handlers ---
-    const handleAddCommonNode = (nodeTemplate: typeof commonNodes[number]) => {
+    const handleAddCommonNode = (nodeTemplate: typeof nodeLibrary[number]['nodes'][number]) => {
         const newNode: GraphNode = {
             id: generateId('node'),
             name: nodeTemplate.name,
@@ -445,25 +443,31 @@ export const BlueprintCreator: React.FC = () => {
                 </div>
             </>
         );
-        if (activeTab === 'logic') return (
+        if (activeTab === 'nodes') return (
             <>
-                <div className="flex-1 overflow-y-auto space-y-2 p-2">
-                    <h4 className="text-sm font-bold text-slate-400 mb-2 p-1">Nós Comuns</h4>
-                    {commonNodes.map(node => (
-                        <button 
-                            key={node.name}
-                            onClick={() => handleAddCommonNode(node)}
-                            className="w-full text-left p-2 bg-slate-800 hover:bg-slate-700 rounded-md border border-slate-700 transition-colors"
-                        >
-                            <p className="font-bold text-slate-200 text-sm">{node.name}</p>
-                        </button>
+                <div className="flex-1 overflow-y-auto space-y-4 p-2 pr-1">
+                    {nodeLibrary.map(category => (
+                        <div key={category.category}>
+                            <h4 className="text-sm font-bold text-slate-400 mb-2 p-1 border-b border-slate-700">{category.category}</h4>
+                            <div className="space-y-2">
+                                {category.nodes.map(node => (
+                                    <button 
+                                        key={node.name}
+                                        onClick={() => handleAddCommonNode(node)}
+                                        className="w-full text-left p-2 bg-slate-800 hover:bg-slate-700 rounded-md border border-slate-700 transition-colors"
+                                    >
+                                        <p className="font-bold text-slate-200 text-sm">{node.name}</p>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
                     ))}
                 </div>
             </>
         );
     };
 
-    const TabButton: React.FC<{ tabId: 'variables' | 'events' | 'functions' | 'logic'; icon: React.ReactNode; label: string }> = ({ tabId, icon, label }) => (
+    const TabButton: React.FC<{ tabId: 'variables' | 'events' | 'functions' | 'nodes'; icon: React.ReactNode; label: string }> = ({ tabId, icon, label }) => (
         <button
             onClick={() => setActiveTab(tabId)}
             title={label}
@@ -489,9 +493,9 @@ export const BlueprintCreator: React.FC = () => {
                             <TabButton tabId="variables" icon={<VariableIcon className="w-5 h-5"/>} label="Variáveis" />
                             <TabButton tabId="events" icon={<BoltIcon className="w-5 h-5"/>} label="Eventos" />
                             <TabButton tabId="functions" icon={<FunctionIcon className="w-5 h-5"/>} label="Funções" />
-                            <TabButton tabId="logic" icon={<GitBranchIcon className="w-5 h-5"/>} label="Lógica" />
+                            <TabButton tabId="nodes" icon={<BlocksIcon className="w-5 h-5"/>} label="Nós" />
                         </div>
-                        <div className="p-4 flex flex-col flex-grow overflow-hidden">
+                        <div className="p-2 flex flex-col flex-grow overflow-hidden">
                             {renderSidebarContent()}
                         </div>
                     </div>
