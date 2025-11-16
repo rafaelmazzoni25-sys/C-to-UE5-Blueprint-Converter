@@ -3,7 +3,7 @@ import React, { useState, useCallback } from 'react';
 import { generateCppCode, GraphData, GraphNode, CppCodeResponse, GraphVariable, GraphPin } from '../services/geminiService';
 import { BlueprintVisualizer } from './BlueprintVisualizer';
 import { CppCodeDisplay } from './CppCodeDisplay';
-import { MagicWandIcon, PlusIcon, TrashIcon, VariableIcon, BoltIcon, FunctionIcon, EditIcon } from './icons';
+import { MagicWandIcon, PlusIcon, TrashIcon, VariableIcon, BoltIcon, FunctionIcon, EditIcon, GitBranchIcon } from './icons';
 
 interface CustomEvent {
     id: string;
@@ -79,12 +79,52 @@ const initialGraphData: GraphData = {
 const generateId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 const variableTypes = ['Boolean', 'Integer', 'Float', 'String', 'Vector', 'Rotator', 'Transform', 'Name'];
 
+const commonNodes = [
+  {
+    name: 'Branch',
+    type: 'flow_control',
+    pins: [
+      { name: '', type: 'exec', direction: 'in', dataType: 'Exec' },
+      { name: 'Condition', type: 'data', direction: 'in', dataType: 'Boolean' },
+      { name: 'True', type: 'exec', direction: 'out', dataType: 'Exec' },
+      { name: 'False', type: 'exec', direction: 'out', dataType: 'Exec' },
+    ]
+  },
+  {
+    name: 'AND Boolean',
+    type: 'function',
+    pins: [
+      { name: 'A', type: 'data', direction: 'in', dataType: 'Boolean' },
+      { name: 'B', type: 'data', direction: 'in', dataType: 'Boolean' },
+      { name: 'Return Value', type: 'data', direction: 'out', dataType: 'Boolean' },
+    ]
+  },
+  {
+    name: 'OR Boolean',
+    type: 'function',
+    pins: [
+      { name: 'A', type: 'data', direction: 'in', dataType: 'Boolean' },
+      { name: 'B', type: 'data', direction: 'in', dataType: 'Boolean' },
+      { name: 'Return Value', type: 'data', direction: 'out', dataType: 'Boolean' },
+    ]
+  },
+  {
+    name: 'NOT Boolean',
+    type: 'function',
+    pins: [
+      { name: 'Input', type: 'data', direction: 'in', dataType: 'Boolean' },
+      { name: 'Return Value', type: 'data', direction: 'out', dataType: 'Boolean' },
+    ]
+  },
+] as const;
+
+
 export const BlueprintCreator: React.FC = () => {
     const [graphData, setGraphData] = useState<GraphData>(initialGraphData);
     const [cppCode, setCppCode] = useState<CppCodeResponse | null>(null);
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
-    const [activeTab, setActiveTab] = useState<'variables' | 'events' | 'functions'>('variables');
+    const [activeTab, setActiveTab] = useState<'variables' | 'events' | 'functions' | 'logic'>('variables');
     
     // State for variables
     const [newVariableName, setNewVariableName] = useState<string>('');
@@ -293,6 +333,22 @@ export const BlueprintCreator: React.FC = () => {
     const addParam = () => setNewFunctionParams(prev => [...prev, { id: generateId('param'), name: `Param${prev.length}`, type: 'Boolean' }]);
     const removeParam = (id: string) => setNewFunctionParams(prev => prev.filter(p => p.id !== id));
 
+    // --- Common Node Handlers ---
+    const handleAddCommonNode = (nodeTemplate: typeof commonNodes[number]) => {
+        const newNode: GraphNode = {
+            id: generateId('node'),
+            name: nodeTemplate.name,
+            type: nodeTemplate.type,
+            x: 300,
+            y: 300,
+            pins: nodeTemplate.pins.map(pin => ({
+                ...pin,
+                id: generateId('pin'),
+            })),
+        };
+        setGraphData(prev => ({...prev, nodes: [...prev.nodes, newNode]}));
+    };
+
     const renderSidebarContent = () => {
         if (activeTab === 'variables') return (
             <>
@@ -389,9 +445,25 @@ export const BlueprintCreator: React.FC = () => {
                 </div>
             </>
         );
+        if (activeTab === 'logic') return (
+            <>
+                <div className="flex-1 overflow-y-auto space-y-2 p-2">
+                    <h4 className="text-sm font-bold text-slate-400 mb-2 p-1">Nós Comuns</h4>
+                    {commonNodes.map(node => (
+                        <button 
+                            key={node.name}
+                            onClick={() => handleAddCommonNode(node)}
+                            className="w-full text-left p-2 bg-slate-800 hover:bg-slate-700 rounded-md border border-slate-700 transition-colors"
+                        >
+                            <p className="font-bold text-slate-200 text-sm">{node.name}</p>
+                        </button>
+                    ))}
+                </div>
+            </>
+        );
     };
 
-    const TabButton: React.FC<{ tabId: 'variables' | 'events' | 'functions'; icon: React.ReactNode; label: string }> = ({ tabId, icon, label }) => (
+    const TabButton: React.FC<{ tabId: 'variables' | 'events' | 'functions' | 'logic'; icon: React.ReactNode; label: string }> = ({ tabId, icon, label }) => (
         <button
             onClick={() => setActiveTab(tabId)}
             title={label}
@@ -417,6 +489,7 @@ export const BlueprintCreator: React.FC = () => {
                             <TabButton tabId="variables" icon={<VariableIcon className="w-5 h-5"/>} label="Variáveis" />
                             <TabButton tabId="events" icon={<BoltIcon className="w-5 h-5"/>} label="Eventos" />
                             <TabButton tabId="functions" icon={<FunctionIcon className="w-5 h-5"/>} label="Funções" />
+                            <TabButton tabId="logic" icon={<GitBranchIcon className="w-5 h-5"/>} label="Lógica" />
                         </div>
                         <div className="p-4 flex flex-col flex-grow overflow-hidden">
                             {renderSidebarContent()}
