@@ -329,6 +329,7 @@ export const BlueprintVisualizer: React.FC<BlueprintVisualizerProps> = ({ graphD
     const handleWheel = useCallback((e: React.WheelEvent) => {
         if (!isInteractive) return;
         e.preventDefault();
+        e.stopPropagation();
         const zoomIntensity = 0.1;
         const newScale = viewTransform.scale * (1 - e.deltaY * 0.01 * zoomIntensity);
         const minScale = 0.1;
