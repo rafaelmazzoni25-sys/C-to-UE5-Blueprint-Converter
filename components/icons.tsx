@@ -95,7 +95,7 @@ export const PaletteIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
         <circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
         <circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
         <circle cx="10.5" cy="12.5" r=".5" fill="currentColor" />
-        <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.667 0-.422-.182-.833-.476-1.12-.297-.29-.703-.478-1.128-.478H12c-4.4 0-8-3.6-8-8s3.6-8 8-8c.926 0 1.648.746 1.648 1.667 0 .422-.182.833-.476 1.12-.297-.29-.703-.478-1.128.478H12" />
+        <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.667 0-.422-.182-.833-.476-1.12-.297-.29-.703-.478-1.128-.478H12c-4.4 0-8-3.6-8-8s3.6-8 8-8c.926 0 1.648.746 1.648 1.667 0 .422-.182.833-.476 1.12-.297-.29-.703-.478-1.128-.478H12" />
     </svg>
 );
 
@@ -254,5 +254,25 @@ export const CopyIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   >
     <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
     <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+  </svg>
+);
+
+export const VariableIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="24"
+    height="24"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <path d="M8 21s-4-3-4-9 4-9 4-9" />
+    <path d="M16 3s4 3 4 9-4 9-4 9" />
+    <line x1="15" y1="9" x2="9" y2="15" />
+    <line x1="9" y1="9" x2="15" y2="15" />
   </svg>
 );
