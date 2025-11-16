@@ -79,6 +79,17 @@ const initialGraphData: GraphData = {
             properties: { value: "9" },
             pins: [{ id: 'pin-15', name: 'Value', type: 'data', direction: 'out', dataType: 'Integer' }],
         },
+        {
+            id: 'node-8',
+            name: 'Meu Evento Personalizado',
+            type: 'event',
+            x: 50,
+            y: 500,
+            pins: [
+                { id: 'pin-16', name: '', type: 'exec', direction: 'out', dataType: 'Exec' },
+                { id: 'pin-17', name: 'PlayerID', type: 'data', direction: 'out', dataType: 'Integer' },
+            ],
+        },
     ],
     connections: [
         { fromPinId: 'pin-1', toPinId: 'pin-2' }, // BeginPlay -> Print String
