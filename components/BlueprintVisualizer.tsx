@@ -59,6 +59,24 @@ const getPinPosition = (node: GraphNode, pinId: string): { x: number, y: number 
     return { x, y };
 };
 
+const arePinsCompatible = (
+  fromPin: GraphPin,
+  toPin: GraphPin,
+  fromNodeId: string,
+  toNodeId: string
+): boolean => {
+  // Connection must be from an output pin to an input pin.
+  if (fromPin.direction !== 'out' || toPin.direction !== 'in') return false;
+  // Can't connect to a pin on the same node.
+  if (fromNodeId === toNodeId) return false;
+  // Pin types must match (e.g., exec to exec, data to data).
+  if (fromPin.type !== toPin.type) return false;
+  // If they are data pins, their data types must also match.
+  if (fromPin.type === 'data' && fromPin.dataType !== toPin.dataType) return false;
+  
+  return true;
+};
+
 
 const NodeDetailPanel = ({ node, graphData, onClose }: { node: GraphNode, graphData: GraphData, onClose: () => void }) => {
     return (
@@ -116,6 +134,7 @@ export const BlueprintVisualizer: React.FC<BlueprintVisualizerProps> = ({ graphD
     const [isColorPickerVisible, setIsColorPickerVisible] = useState(false);
     const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
     const [draggingConnection, setDraggingConnection] = useState<{ fromPin: GraphPin; fromNode: GraphNode; mousePosition: { x: number; y: number; }; } | null>(null);
+    const [hoveredPinInfo, setHoveredPinInfo] = useState<{ pin: GraphPin; node: GraphNode } | null>(null);
     
     const svgRef = useRef<SVGSVGElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -285,16 +304,14 @@ export const BlueprintVisualizer: React.FC<BlueprintVisualizerProps> = ({ graphD
     }, [isInteractive]);
 
     const handlePinMouseUp = useCallback((e: React.MouseEvent, toPin: GraphPin, toNode: GraphNode) => {
-        if (!isInteractive || !draggingConnection || toPin.direction === 'out') return;
+        if (!isInteractive || !draggingConnection) return;
         e.stopPropagation();
 
-        const { fromPin } = draggingConnection;
-        const typesMatch = fromPin.type === toPin.type;
-        const dataTypesMatch = fromPin.type === 'data' ? fromPin.dataType === toPin.dataType : true;
-        const notSelfConnection = draggingConnection.fromNode.id !== toNode.id;
-
-        if (typesMatch && dataTypesMatch && notSelfConnection) {
+        const { fromPin, fromNode } = draggingConnection;
+        
+        if (arePinsCompatible(fromPin, toPin, fromNode.id, toNode.id)) {
             const newConnection = { fromPinId: fromPin.id, toPinId: toPin.id };
+            // Input pins should only have one connection. Replace any existing one.
             const connections = localGraphData.connections.filter(c => c.toPinId !== toPin.id);
             connections.push(newConnection);
 
@@ -304,6 +321,9 @@ export const BlueprintVisualizer: React.FC<BlueprintVisualizerProps> = ({ graphD
                 onGraphChange(newGraphData);
             }
         }
+        
+        // Always clear dragging state after a pin mouse up event
+        setDraggingConnection(null);
     }, [isInteractive, draggingConnection, localGraphData, onGraphChange]);
 
     const handleWheel = useCallback((e: React.WheelEvent) => {
@@ -435,31 +455,59 @@ export const BlueprintVisualizer: React.FC<BlueprintVisualizerProps> = ({ graphD
                                 const pos = getPinPosition(node, pin.id);
                                 const pinY = pos.y - node.y;
                                 const pinColor = DATA_TYPE_COLORS[pin.dataType] || DATA_TYPE_COLORS.default;
+                                
+                                let isCompatible = false;
+                                let cursorStyle: React.CSSProperties = { cursor: pin.direction === 'out' ? 'crosshair' : 'default' };
+                                let pinOpacity = 1;
+
+                                if (draggingConnection) {
+                                    if (pin.direction === 'in') {
+                                        const { fromPin, fromNode } = draggingConnection;
+                                        isCompatible = arePinsCompatible(fromPin, pin, fromNode.id, node.id);
+                                        cursorStyle = { cursor: isCompatible ? 'pointer' : 'not-allowed' };
+                                        if (!isCompatible) {
+                                            pinOpacity = 0.5;
+                                        }
+                                    } else {
+                                        pinOpacity = 0.5; // Dim all non-target (output) pins
+                                    }
+                                }
+
+                                const isHoveredAndCompatible = isCompatible && hoveredPinInfo?.pin.id === pin.id;
+
                                 return (
-                                <g key={pin.id} 
-                                   onMouseDown={(e) => handlePinMouseDown(e, pin, node)} 
-                                   onMouseUp={(e) => handlePinMouseUp(e, pin, node)}
-                                   className="cursor-crosshair"
+                                <g
+                                    key={pin.id}
+                                    onMouseDown={(e) => handlePinMouseDown(e, pin, node)}
+                                    onMouseUp={(e) => handlePinMouseUp(e, pin, node)}
+                                    onMouseEnter={() => setHoveredPinInfo({ pin, node })}
+                                    onMouseLeave={() => setHoveredPinInfo(null)}
+                                    style={cursorStyle}
                                 >
-                                    {pin.type === 'exec' ? (
-                                        <path 
-                                            d={pin.direction === 'in' ? `M ${-PIN_SIZE} ${pinY-PIN_SIZE} H ${PIN_SIZE} L ${PIN_SIZE*2} ${pinY} L ${PIN_SIZE} ${pinY+PIN_SIZE} H ${-PIN_SIZE} Z` : `M ${NODE_WIDTH-PIN_SIZE} ${pinY-PIN_SIZE} H ${NODE_WIDTH+PIN_SIZE} L ${NODE_WIDTH+PIN_SIZE*2} ${pinY} L ${NODE_WIDTH+PIN_SIZE} ${pinY+PIN_SIZE} H ${NODE_WIDTH-PIN_SIZE} Z`}
-                                            fill={pinColor}
-                                        />
-                                    ) : (
-                                        <circle cx={pin.direction === 'in' ? 0 : NODE_WIDTH} cy={pinY} r={PIN_SIZE} fill={pinColor} />
-                                    )}
-                                    <text
-                                        x={pin.direction === 'in' ? PIN_TEXT_OFFSET : NODE_WIDTH - PIN_TEXT_OFFSET}
-                                        y={pinY}
-                                        textAnchor={pin.direction === 'in' ? 'start' : 'end'}
-                                        dominantBaseline="middle"
-                                        fill="#E0E0E0"
-                                        fontSize="12"
-                                        className="pointer-events-none select-none"
-                                    >
-                                        {pin.name}
-                                    </text>
+                                    <g style={{ opacity: pinOpacity, transition: 'opacity 0.2s' }}>
+                                        {isHoveredAndCompatible && (
+                                            <circle cx={pin.direction === 'in' ? 0 : NODE_WIDTH} cy={pinY} r={PIN_SIZE + 4} fill="none" stroke="#0EA5E9" strokeWidth="2" />
+                                        )}
+                                        {pin.type === 'exec' ? (
+                                            <path 
+                                                d={pin.direction === 'in' ? `M ${-PIN_SIZE} ${pinY-PIN_SIZE} H ${PIN_SIZE} L ${PIN_SIZE*2} ${pinY} L ${PIN_SIZE} ${pinY+PIN_SIZE} H ${-PIN_SIZE} Z` : `M ${NODE_WIDTH-PIN_SIZE} ${pinY-PIN_SIZE} H ${NODE_WIDTH+PIN_SIZE} L ${NODE_WIDTH+PIN_SIZE*2} ${pinY} L ${NODE_WIDTH+PIN_SIZE} ${pinY+PIN_SIZE} H ${NODE_WIDTH-PIN_SIZE} Z`}
+                                                fill={pinColor}
+                                            />
+                                        ) : (
+                                            <circle cx={pin.direction === 'in' ? 0 : NODE_WIDTH} cy={pinY} r={PIN_SIZE} fill={pinColor} />
+                                        )}
+                                        <text
+                                            x={pin.direction === 'in' ? PIN_TEXT_OFFSET : NODE_WIDTH - PIN_TEXT_OFFSET}
+                                            y={pinY}
+                                            textAnchor={pin.direction === 'in' ? 'start' : 'end'}
+                                            dominantBaseline="middle"
+                                            fill="#E0E0E0"
+                                            fontSize="12"
+                                            className="pointer-events-none select-none"
+                                        >
+                                            {pin.name}
+                                        </text>
+                                    </g>
                                 </g>
                                 );
                             })}
