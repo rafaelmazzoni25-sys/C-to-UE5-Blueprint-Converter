@@ -54,6 +54,17 @@ const initialGraphData: GraphData = {
             properties: { value: "Hello World from Blueprint!" },
             pins: [{ id: 'pin-5', name: 'Value', type: 'data', direction: 'out', dataType: 'String' }],
         },
+        {
+            id: 'node-4',
+            name: 'Set Health',
+            type: 'function',
+            x: 450,
+            y: 350,
+            pins: [
+                { id: 'pin-6', name: '', type: 'exec', direction: 'in', dataType: 'Exec' },
+                { id: 'pin-7', name: 'New Health', type: 'data', direction: 'in', dataType: 'Integer' },
+            ],
+        },
     ],
     connections: [
         { fromPinId: 'pin-1', toPinId: 'pin-2' },
