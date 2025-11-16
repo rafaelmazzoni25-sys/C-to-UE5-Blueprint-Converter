@@ -31,11 +31,32 @@ export interface GraphVariable {
     type: string;
 }
 
+export interface CustomEvent {
+    id: string;
+    name: string;
+}
+
+export interface FunctionParameter {
+    id: string;
+    name: string;
+    type: string;
+}
+
+export interface CustomFunction {
+    id: string;
+    name: string;
+    parameters: FunctionParameter[];
+    returnType: string; // 'None' para nenhum retorno
+}
+
 export interface GraphData {
     nodes: GraphNode[];
     connections: GraphConnection[];
     variables: GraphVariable[];
+    customEvents?: CustomEvent[];
+    customFunctions?: CustomFunction[];
 }
+
 
 // New interface for a single Blueprint graph with its context
 export interface BlueprintGraph {
@@ -223,10 +244,12 @@ export const generateCppCode = async (graphData: GraphData): Promise<CppCodeResp
     Você é um desenvolvedor especialista em Unreal Engine 5 C++. Sua tarefa é converter uma representação JSON de um grafo de Blueprint em código C++ para uma nova classe AActor.
 
     **JSON de Entrada:**
-    O JSON a seguir descreve os nós, conexões e variáveis no grafo de Blueprint.
-    - 'nodes': A lista de nós do Blueprint.
-    - 'connections': O fluxo de execução e de dados entre os pinos dos nós.
-    - 'variables': As variáveis de membro da classe Blueprint.
+    O JSON a seguir descreve os nós, conexões, variáveis e definições de funções/eventos personalizados.
+    - 'nodes': A lista de nós do Blueprint. Nós com 'type: 'event'' são pontos de entrada para a lógica.
+    - 'connections': O fluxo de execução e de dados.
+    - 'variables': Variáveis de membro para a classe.
+    - 'customEvents': Definições para eventos personalizados. A implementação para estes é encontrada no grafo de 'nodes', começando pelo nó com o nome correspondente.
+    - 'customFunctions': Definições para funções personalizadas. Estas funções devem ser criadas com corpos vazios, pois sua lógica não é definida neste grafo; elas estão apenas sendo chamadas.
 
     \`\`\`json
     ${JSON.stringify(graphData, null, 2)}
@@ -235,19 +258,19 @@ export const generateCppCode = async (graphData: GraphData): Promise<CppCodeResp
     **Instruções:**
     1.  Crie uma nova classe C++ que herda de 'AActor'. Nomeie-a 'MyBlueprintActor'.
     2.  **Arquivo de Cabeçalho (.h):**
-        -   Declare todas as variáveis da lista 'variables' como UPROPERTYs no arquivo de cabeçalho. Escolha tipos C++ apropriados (e.g., 'bool' para Boolean, 'int32' para Integer, 'FString' para String, 'FVector' para Vector). Use 'EditAnywhere' e 'BlueprintReadWrite'.
-        -   Declare as anulações de função necessárias (e.g., 'BeginPlay', 'Tick').
-        -   Declare quaisquer novas funções que correspondam a nós de função personalizados no grafo.
+        -   Declare todas as variáveis da lista 'variables' como UPROPERTYs. Use 'EditAnywhere' e 'BlueprintReadWrite'. Escolha tipos C++ apropriados (e.g., 'bool' para Boolean, 'int32' para Integer, 'FString' para String).
+        -   Para cada função em 'customFunctions', declare uma 'UFUNCTION(BlueprintCallable)' correspondente.
+        -   Para cada evento em 'customEvents', declare uma 'UFUNCTION(BlueprintCallable)' correspondente.
+        -   Declare também eventos nativos como 'BeginPlay' ou 'Tick' se eles forem usados como pontos de entrada no grafo.
     3.  **Arquivo de Origem (.cpp):**
-        -   Implemente a lógica do grafo nas funções C++ correspondentes.
-        -   Siga as conexões (array 'connections') para estruturar corretamente o fluxo de código.
+        -   Implemente a lógica para cada evento/função que tenha um nó de ponto de entrada no grafo (e.g., 'BeginPlay', eventos personalizados). Siga as 'connections' para estruturar o código corretamente.
+        -   Para cada função de 'customFunctions', forneça uma implementação C++ vazia.
         -   Use a sintaxe e as convenções padrão do C++ da UE5.
     4.  **Formato de Saída:**
         -   Sua resposta DEVE ser um único objeto JSON válido.
         -   O objeto JSON deve ter duas chaves: "header" e "source".
         -   O valor da chave "header" deve ser o código completo para o arquivo '.h' como uma string.
         -   O valor da chave "source" deve ser o código completo para o arquivo '.cpp' como uma string.
-        -   Não inclua explicações ou formatação markdown fora do objeto JSON.
 
     Gere o objeto JSON contendo o código C++ agora.
   `;
