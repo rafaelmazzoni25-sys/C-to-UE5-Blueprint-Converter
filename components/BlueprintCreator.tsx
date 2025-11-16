@@ -148,6 +148,18 @@ const nodeLibrary = [
     ]
   },
   {
+    category: 'Math (Float)',
+    nodes: [
+      { name: 'Float + Float', type: 'function' as const, pins: [ { name: 'A', type: 'data' as const, direction: 'in' as const, dataType: 'Float' }, { name: 'B', type: 'data' as const, direction: 'in' as const, dataType: 'Float' }, { name: 'Return Value', type: 'data' as const, direction: 'out' as const, dataType: 'Float' } ] },
+      { name: 'Float - Float', type: 'function' as const, pins: [ { name: 'A', type: 'data' as const, direction: 'in' as const, dataType: 'Float' }, { name: 'B', type: 'data' as const, direction: 'in' as const, dataType: 'Float' }, { name: 'Return Value', type: 'data' as const, direction: 'out' as const, dataType: 'Float' } ] },
+      { name: 'Float * Float', type: 'function' as const, pins: [ { name: 'A', type: 'data' as const, direction: 'in' as const, dataType: 'Float' }, { name: 'B', type: 'data' as const, direction: 'in' as const, dataType: 'Float' }, { name: 'Return Value', type: 'data' as const, direction: 'out' as const, dataType: 'Float' } ] },
+      { name: 'Float / Float', type: 'function' as const, pins: [ { name: 'A', type: 'data' as const, direction: 'in' as const, dataType: 'Float' }, { name: 'B', type: 'data' as const, direction: 'in' as const, dataType: 'Float' }, { name: 'Return Value', type: 'data' as const, direction: 'out' as const, dataType: 'Float' } ] },
+      { name: 'Float < Float', type: 'function' as const, pins: [ { name: 'A', type: 'data' as const, direction: 'in' as const, dataType: 'Float' }, { name: 'B', type: 'data' as const, direction: 'in' as const, dataType: 'Float' }, { name: 'Return Value', type: 'data' as const, direction: 'out' as const, dataType: 'Boolean' } ] },
+      { name: 'Float > Float', type: 'function' as const, pins: [ { name: 'A', type: 'data' as const, direction: 'in' as const, dataType: 'Float' }, { name: 'B', type: 'data' as const, direction: 'in' as const, dataType: 'Float' }, { name: 'Return Value', type: 'data' as const, direction: 'out' as const, dataType: 'Boolean' } ] },
+      { name: 'Float == Float', type: 'function' as const, pins: [ { name: 'A', type: 'data' as const, direction: 'in' as const, dataType: 'Float' }, { name: 'B', type: 'data' as const, direction: 'in' as const, dataType: 'Float' }, { name: 'Return Value', type: 'data' as const, direction: 'out' as const, dataType: 'Boolean' } ] },
+    ]
+  },
+  {
     category: 'Utilities',
     nodes: [
       { name: 'Print String', type: 'function' as const, pins: [ { name: '', type: 'exec' as const, direction: 'in' as const, dataType: 'Exec' }, { name: '', type: 'exec' as const, direction: 'out' as const, dataType: 'Exec' }, { name: 'In String', type: 'data' as const, direction: 'in' as const, dataType: 'String' } ] }
