@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useMemo } from 'react';
 // FIX: Import `GraphPin` to use as a type annotation.
 import { generateCppCode, GraphData, GraphNode, CppCodeResponse, GraphVariable, GraphPin } from '../services/geminiService';
 import { BlueprintVisualizer } from './BlueprintVisualizer';
@@ -167,6 +167,82 @@ const nodeLibrary = [
   }
 ];
 
+const NodePicker: React.FC<{
+    x: number;
+    y: number;
+    nodeLibrary: typeof nodeLibrary;
+    onPick: (nodeTemplate: typeof nodeLibrary[number]['nodes'][number]) => void;
+    onClose: () => void;
+}> = ({ x, y, nodeLibrary, onPick, onClose }) => {
+    const [searchTerm, setSearchTerm] = useState('');
+    const pickerRef = useRef<HTMLDivElement>(null);
+
+    React.useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (pickerRef.current && !pickerRef.current.contains(event.target as Node)) {
+                onClose();
+            }
+        };
+        setTimeout(() => document.addEventListener('mousedown', handleClickOutside), 0);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [onClose]);
+
+    const filteredLibrary = useMemo(() => {
+        if (!searchTerm) return nodeLibrary;
+        const lowerSearchTerm = searchTerm.toLowerCase();
+        return nodeLibrary
+            .map(category => ({
+                ...category,
+                nodes: category.nodes.filter(node => node.name.toLowerCase().includes(lowerSearchTerm))
+            }))
+            .filter(category => category.nodes.length > 0);
+    }, [searchTerm, nodeLibrary]);
+
+    const style: React.CSSProperties = {
+        position: 'absolute',
+        top: `${y + 10}px`,
+        left: `${x + 10}px`,
+    };
+
+    return (
+        <div
+            ref={pickerRef}
+            style={style}
+            className="z-50 w-72 h-96 bg-slate-800 border border-slate-600 rounded-lg shadow-2xl flex flex-col"
+            onMouseDown={e => e.stopPropagation()}
+        >
+            <div className="p-2 border-b border-slate-700 flex-shrink-0">
+                <input
+                    type="text"
+                    placeholder="Procurar nós..."
+                    value={searchTerm}
+                    onChange={e => setSearchTerm(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    autoFocus
+                />
+            </div>
+            <div className="flex-1 overflow-y-auto p-2">
+                {filteredLibrary.length > 0 ? filteredLibrary.map(category => (
+                    <div key={category.category}>
+                        <h4 className="text-xs font-bold text-slate-500 my-2 px-1 uppercase">{category.category}</h4>
+                        {category.nodes.map(node => (
+                            <button
+                                key={node.name}
+                                onClick={() => onPick(node)}
+                                className="w-full text-left p-2 bg-slate-800 hover:bg-slate-700 rounded-md transition-colors text-sm text-slate-200"
+                            >
+                                {node.name}
+                            </button>
+                        ))}
+                    </div>
+                )) : <div className="text-center text-slate-500 p-4">Nenhum nó encontrado.</div>}
+            </div>
+        </div>
+    );
+};
+
 export const BlueprintCreator: React.FC = () => {
     const [graphData, setGraphData] = useState<GraphData>(initialGraphData);
     const [cppCode, setCppCode] = useState<CppCodeResponse | null>(null);
@@ -189,6 +265,14 @@ export const BlueprintCreator: React.FC = () => {
     const [newFunctionReturnType, setNewFunctionReturnType] = useState('None');
     const [editingFunction, setEditingFunction] = useState<CustomFunction | null>(null);
 
+    const [nodePickerState, setNodePickerState] = useState<{
+        visible: boolean;
+        screenX: number;
+        screenY: number;
+        graphX: number;
+        graphY: number;
+    }>({ visible: false, screenX: 0, screenY: 0, graphX: 0, graphY: 0 });
+    const visualizerContainerRef = useRef<HTMLDivElement>(null);
 
     const handleConvertToCpp = useCallback(async () => {
         setIsLoading(true);
@@ -382,19 +466,36 @@ export const BlueprintCreator: React.FC = () => {
     const removeParam = (id: string) => setNewFunctionParams(prev => prev.filter(p => p.id !== id));
 
     // --- Common Node Handlers ---
-    const handleAddCommonNode = (nodeTemplate: typeof nodeLibrary[number]['nodes'][number]) => {
+    const handleAddCommonNode = (nodeTemplate: typeof nodeLibrary[number]['nodes'][number], position?: { x: number; y: number }) => {
         const newNode: GraphNode = {
             id: generateId('node'),
             name: nodeTemplate.name,
             type: nodeTemplate.type,
-            x: 300,
-            y: 300,
+            x: position?.x ?? 300,
+            y: position?.y ?? 300,
             pins: nodeTemplate.pins.map(pin => ({
                 ...pin,
                 id: generateId('pin'),
             })),
         };
         setGraphData(prev => ({...prev, nodes: [...prev.nodes, newNode]}));
+    };
+
+    const handleCanvasClick = useCallback((event: { screenX: number; screenY: number; graphX: number; graphY: number }) => {
+        if (!visualizerContainerRef.current) return;
+        const rect = visualizerContainerRef.current.getBoundingClientRect();
+        setNodePickerState({
+            visible: true,
+            screenX: event.screenX - rect.left,
+            screenY: event.screenY - rect.top,
+            graphX: event.graphX,
+            graphY: event.graphY,
+        });
+    }, []);
+
+    const handleNodePick = (nodeTemplate: typeof nodeLibrary[number]['nodes'][number]) => {
+        handleAddCommonNode(nodeTemplate, { x: nodePickerState.graphX, y: nodePickerState.graphY });
+        setNodePickerState({ ...nodePickerState, visible: false });
     };
 
     const renderSidebarContent = () => {
@@ -550,8 +651,22 @@ export const BlueprintCreator: React.FC = () => {
                         </div>
                     </div>
                     
-                    <div className="flex-1 h-full">
-                         <BlueprintVisualizer graphData={graphData} isInteractive={true} onGraphChange={setGraphData} />
+                    <div ref={visualizerContainerRef} className="flex-1 h-full relative">
+                         <BlueprintVisualizer
+                            graphData={graphData}
+                            isInteractive={true}
+                            onGraphChange={setGraphData}
+                            onCanvasClick={handleCanvasClick}
+                         />
+                         {nodePickerState.visible && (
+                            <NodePicker
+                                x={nodePickerState.screenX}
+                                y={nodePickerState.screenY}
+                                nodeLibrary={nodeLibrary}
+                                onPick={handleNodePick}
+                                onClose={() => setNodePickerState({ ...nodePickerState, visible: false })}
+                            />
+                        )}
                     </div>
                 </div>
 

@@ -6,6 +6,7 @@ interface BlueprintVisualizerProps {
   graphData: GraphData;
   isInteractive?: boolean;
   onGraphChange?: (newData: GraphData) => void;
+  onCanvasClick?: (event: { screenX: number; screenY: number; graphX: number; graphY: number }) => void;
 }
 
 const NODE_WIDTH = 220;
@@ -106,7 +107,7 @@ const NodeDetailPanel = ({ node, graphData, onClose }: { node: GraphNode, graphD
 };
 
 
-export const BlueprintVisualizer: React.FC<BlueprintVisualizerProps> = ({ graphData, isInteractive = true, onGraphChange }) => {
+export const BlueprintVisualizer: React.FC<BlueprintVisualizerProps> = ({ graphData, isInteractive = true, onGraphChange, onCanvasClick }) => {
     const [localGraphData, setLocalGraphData] = useState<GraphData>(graphData);
     const [viewTransform, setViewTransform] = useState({ x: 50, y: 50, scale: 1 });
     const [isPanning, setIsPanning] = useState(false);
@@ -120,6 +121,7 @@ export const BlueprintVisualizer: React.FC<BlueprintVisualizerProps> = ({ graphD
     const containerRef = useRef<HTMLDivElement>(null);
     const interactionStartRef = useRef({ x: 0, y: 0 });
     const wasDraggedRef = useRef(false);
+    const isPotentialClickRef = useRef(false);
 
     useEffect(() => {
         setLocalGraphData(graphData);
@@ -195,6 +197,7 @@ export const BlueprintVisualizer: React.FC<BlueprintVisualizerProps> = ({ graphD
             interactionStartRef.current = { x: e.clientX, y: e.clientY };
             setSelectedNode(null);
             setIsColorPickerVisible(false);
+            isPotentialClickRef.current = true;
         }
     }, [isInteractive]);
 
@@ -202,6 +205,10 @@ export const BlueprintVisualizer: React.FC<BlueprintVisualizerProps> = ({ graphD
         if (!isInteractive) return;
         const dx = e.clientX - interactionStartRef.current.x;
         const dy = e.clientY - interactionStartRef.current.y;
+
+        if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+            isPotentialClickRef.current = false;
+        }
 
         if (draggingNode) {
             if(Math.abs(dx) > 5 || Math.abs(dy) > 5) {
@@ -246,6 +253,29 @@ export const BlueprintVisualizer: React.FC<BlueprintVisualizerProps> = ({ graphD
         setDraggingNode(null);
         setDraggingConnection(null);
     }, [draggingNode, onGraphChange, localGraphData, nodeMap, isInteractive]);
+
+    const handleBackgroundMouseUp = useCallback((e: React.MouseEvent) => {
+        if (!isInteractive || !isPotentialClickRef.current || e.target !== e.currentTarget) {
+            return;
+        }
+        
+        isPotentialClickRef.current = false;
+
+        if (onCanvasClick && svgRef.current) {
+            const svgRect = svgRef.current.getBoundingClientRect();
+            const mouseX = e.clientX - svgRect.left;
+            const mouseY = e.clientY - svgRect.top;
+            const graphX = (mouseX - viewTransform.x) / viewTransform.scale;
+            const graphY = (mouseY - viewTransform.y) / viewTransform.scale;
+
+            onCanvasClick({
+                screenX: e.clientX,
+                screenY: e.clientY,
+                graphX,
+                graphY,
+            });
+        }
+    }, [isInteractive, onCanvasClick, viewTransform.x, viewTransform.y, viewTransform.scale]);
 
     const handlePinMouseDown = useCallback((e: React.MouseEvent, pin: GraphPin, node: GraphNode) => {
         if (!isInteractive || pin.direction === 'in') return;
@@ -348,7 +378,7 @@ export const BlueprintVisualizer: React.FC<BlueprintVisualizerProps> = ({ graphD
                 </>
             )}
 
-            <svg ref={svgRef} width="100%" height="100%" onMouseDown={handleBackgroundMouseDown}>
+            <svg ref={svgRef} width="100%" height="100%" onMouseDown={handleBackgroundMouseDown} onMouseUp={handleBackgroundMouseUp}>
                 <g transform={`translate(${viewTransform.x}, ${viewTransform.y}) scale(${viewTransform.scale})`}>
                     {localGraphData.connections.map((conn, index) => {
                         const fromNode = pinToNodeMap.get(conn.fromPinId);
