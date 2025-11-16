@@ -13,7 +13,7 @@ export interface GraphPin {
 export interface GraphNode {
   id: string;
   name: string;
-  type: 'event' | 'function' | 'variable_get' | 'variable_set' | 'flow_control' | 'literal';
+  type: 'event' | 'function' | 'flow_control' | 'variable_get' | 'variable_set' | 'literal';
   x: number;
   y: number;
   properties?: { value?: string };
@@ -44,10 +44,16 @@ export interface BlueprintGraph {
     graphData: GraphData;
 }
 
-// Updated main response structure
+// Updated main response structure for C++ to BP
 export interface BlueprintResponse {
     guide: string;
     blueprintGraphs: BlueprintGraph[];
+}
+
+// New response structure for BP to C++
+export interface CppCodeResponse {
+    header: string;
+    source: string;
 }
 
 
@@ -187,7 +193,6 @@ export const generateBlueprintGuide = async (cppCode: string): Promise<Blueprint
     rawResponseText = response.text;
     let jsonText = rawResponseText.trim();
 
-    // Clean potential markdown fences from the response
     if (jsonText.startsWith('```json')) {
         jsonText = jsonText.substring(7);
         if (jsonText.endsWith('```')) {
@@ -200,6 +205,82 @@ export const generateBlueprintGuide = async (cppCode: string): Promise<Blueprint
   } catch (error) {
     console.error("Error calling or parsing Gemini API response:", error);
     console.error("Raw response text that caused the error:\n", rawResponseText);
+    if (error instanceof Error) {
+        throw new Error(`A chamada para a API Gemini falhou ou a resposta não era um JSON válido: ${error.message}`);
+    }
+    throw new Error("Ocorreu um erro desconhecido ao se comunicar com a API Gemini.");
+  }
+};
+
+export const generateCppCode = async (graphData: GraphData): Promise<CppCodeResponse> => {
+  if (!graphData || graphData.nodes.length === 0) {
+    throw new Error("O grafo de Blueprint não pode estar vazio.");
+  }
+
+  const model = "gemini-2.5-pro";
+
+  const prompt = `
+    Você é um desenvolvedor especialista em Unreal Engine 5 C++. Sua tarefa é converter uma representação JSON de um grafo de Blueprint em código C++ para uma nova classe AActor.
+
+    **JSON de Entrada:**
+    O JSON a seguir descreve os nós, conexões e variáveis no grafo de Blueprint.
+    - 'nodes': A lista de nós do Blueprint.
+    - 'connections': O fluxo de execução e de dados entre os pinos dos nós.
+    - 'variables': As variáveis de membro da classe Blueprint.
+
+    \`\`\`json
+    ${JSON.stringify(graphData, null, 2)}
+    \`\`\`
+
+    **Instruções:**
+    1.  Crie uma nova classe C++ que herda de 'AActor'. Nomeie-a 'MyBlueprintActor'.
+    2.  **Arquivo de Cabeçalho (.h):**
+        -   Declare todas as variáveis da lista 'variables' como UPROPERTYs no arquivo de cabeçalho. Escolha tipos C++ apropriados (e.g., 'bool' para Boolean, 'int32' para Integer, 'FString' para String, 'FVector' para Vector). Use 'EditAnywhere' e 'BlueprintReadWrite'.
+        -   Declare as anulações de função necessárias (e.g., 'BeginPlay', 'Tick').
+        -   Declare quaisquer novas funções que correspondam a nós de função personalizados no grafo.
+    3.  **Arquivo de Origem (.cpp):**
+        -   Implemente a lógica do grafo nas funções C++ correspondentes.
+        -   Siga as conexões (array 'connections') para estruturar corretamente o fluxo de código.
+        -   Use a sintaxe e as convenções padrão do C++ da UE5.
+    4.  **Formato de Saída:**
+        -   Sua resposta DEVE ser um único objeto JSON válido.
+        -   O objeto JSON deve ter duas chaves: "header" e "source".
+        -   O valor da chave "header" deve ser o código completo para o arquivo '.h' como uma string.
+        -   O valor da chave "source" deve ser o código completo para o arquivo '.cpp' como uma string.
+        -   Não inclua explicações ou formatação markdown fora do objeto JSON.
+
+    Gere o objeto JSON contendo o código C++ agora.
+  `;
+  
+  const cppResponseSchema = {
+      type: Type.OBJECT,
+      properties: {
+          header: {
+              type: Type.STRING,
+              description: "O conteúdo completo do arquivo de cabeçalho C++ (.h)."
+          },
+          source: {
+              type: Type.STRING,
+              description: "O conteúdo completo do arquivo de origem C++ (.cpp)."
+          }
+      },
+      required: ['header', 'source']
+  };
+
+  try {
+      const response = await ai.models.generateContent({
+          model,
+          contents: prompt,
+          config: {
+              responseMimeType: "application/json",
+              responseSchema: cppResponseSchema,
+          },
+      });
+
+      const jsonText = response.text.trim();
+      return JSON.parse(jsonText) as CppCodeResponse;
+  } catch (error) {
+    console.error("Error calling or parsing Gemini API response for C++ generation:", error);
     if (error instanceof Error) {
         throw new Error(`A chamada para a API Gemini falhou ou a resposta não era um JSON válido: ${error.message}`);
     }
