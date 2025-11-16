@@ -325,7 +325,7 @@ export const BlueprintCreator: React.FC = () => {
                         ...updatedFunction.parameters.map(p => ({ id: generateId('pin'), name: p.name, type: 'data' as 'data', direction: 'in' as 'in', dataType: p.type })),
                     ];
                     if (updatedFunction.returnType !== 'None') {
-                        pins.push({ id: generateId('pin'), name: 'Return Value', type: 'data', direction: 'out', dataType: updatedFunction.returnType });
+                        pins.push({ id: generateId('pin'), name: 'Return Value', type: 'data' as 'data', direction: 'out' as 'out', dataType: updatedFunction.returnType });
                     }
                     return { ...node, name: updatedFunction.name, pins };
                 }
@@ -368,7 +368,7 @@ export const BlueprintCreator: React.FC = () => {
             ...func.parameters.map(p => ({ id: generateId('pin'), name: p.name, type: 'data' as 'data', direction: 'in' as 'in', dataType: p.type })),
         ];
         if (func.returnType !== 'None') {
-            pins.push({ id: generateId('pin'), name: 'Return Value', type: 'data', direction: 'out', dataType: func.returnType });
+            pins.push({ id: generateId('pin'), name: 'Return Value', type: 'data' as 'data', direction: 'out' as 'out', dataType: func.returnType });
         }
         const newNode: GraphNode = { id: generateId('node'), name: func.name, type: 'function', x: 300, y: 300, pins };
         setGraphData(prev => ({...prev, nodes: [...prev.nodes, newNode]}));
