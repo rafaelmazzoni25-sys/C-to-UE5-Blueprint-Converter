@@ -5,6 +5,7 @@ import { PaletteIcon, XIcon } from './icons';
 interface BlueprintVisualizerProps {
   graphData: GraphData;
   isInteractive?: boolean;
+  onGraphChange?: (newData: GraphData) => void;
 }
 
 const NODE_WIDTH = 220;
@@ -105,7 +106,7 @@ const NodeDetailPanel = ({ node, graphData, onClose }: { node: GraphNode, graphD
 };
 
 
-export const BlueprintVisualizer: React.FC<BlueprintVisualizerProps> = ({ graphData, isInteractive = true }) => {
+export const BlueprintVisualizer: React.FC<BlueprintVisualizerProps> = ({ graphData, isInteractive = true, onGraphChange }) => {
     const [localGraphData, setLocalGraphData] = useState<GraphData>(graphData);
     const [viewTransform, setViewTransform] = useState({ x: 50, y: 50, scale: 1 });
     const [isPanning, setIsPanning] = useState(false);
@@ -113,6 +114,7 @@ export const BlueprintVisualizer: React.FC<BlueprintVisualizerProps> = ({ graphD
     const [nodeColors, setNodeColors] = useState(INITIAL_NODE_COLORS);
     const [isColorPickerVisible, setIsColorPickerVisible] = useState(false);
     const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
+    const [draggingConnection, setDraggingConnection] = useState<{ fromPin: GraphPin; fromNode: GraphNode; mousePosition: { x: number; y: number; }; } | null>(null);
     
     const svgRef = useRef<SVGSVGElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -219,18 +221,60 @@ export const BlueprintVisualizer: React.FC<BlueprintVisualizerProps> = ({ graphD
         } else if (isPanning) {
             setViewTransform(prev => ({ ...prev, x: prev.x + dx, y: prev.y + dy }));
             interactionStartRef.current = { x: e.clientX, y: e.clientY };
+        } else if (draggingConnection && svgRef.current) {
+            const svgRect = svgRef.current.getBoundingClientRect();
+            const mouseX = e.clientX - svgRect.left;
+            const mouseY = e.clientY - svgRect.top;
+            const transformedX = (mouseX - viewTransform.x) / viewTransform.scale;
+            const transformedY = (mouseY - viewTransform.y) / viewTransform.scale;
+            setDraggingConnection(prev => prev ? { ...prev, mousePosition: { x: transformedX, y: transformedY } } : null);
         }
-    }, [draggingNode, isPanning, viewTransform.scale, isInteractive]);
+    }, [draggingNode, isPanning, viewTransform, isInteractive, draggingConnection]);
 
     const handleMouseUp = useCallback(() => {
         if (!isInteractive) return;
-        if (draggingNode && !wasDraggedRef.current) {
-            const node = nodeMap.get(draggingNode.id);
-            setSelectedNode(node || null);
+        if (draggingNode) {
+            if (onGraphChange) {
+                onGraphChange(localGraphData);
+            }
+            if (!wasDraggedRef.current) {
+                const node = nodeMap.get(draggingNode.id);
+                setSelectedNode(node || null);
+            }
         }
         setIsPanning(false);
         setDraggingNode(null);
-    }, [draggingNode, nodeMap, isInteractive]);
+        setDraggingConnection(null);
+    }, [draggingNode, onGraphChange, localGraphData, nodeMap, isInteractive]);
+
+    const handlePinMouseDown = useCallback((e: React.MouseEvent, pin: GraphPin, node: GraphNode) => {
+        if (!isInteractive || pin.direction === 'in') return;
+        e.stopPropagation();
+        const startPos = getPinPosition(node, pin.id);
+        setDraggingConnection({ fromPin: pin, fromNode: node, mousePosition: startPos });
+    }, [isInteractive]);
+
+    const handlePinMouseUp = useCallback((e: React.MouseEvent, toPin: GraphPin, toNode: GraphNode) => {
+        if (!isInteractive || !draggingConnection || toPin.direction === 'out') return;
+        e.stopPropagation();
+
+        const { fromPin } = draggingConnection;
+        const typesMatch = fromPin.type === toPin.type;
+        const dataTypesMatch = fromPin.type === 'data' ? fromPin.dataType === toPin.dataType : true;
+        const notSelfConnection = draggingConnection.fromNode.id !== toNode.id;
+
+        if (typesMatch && dataTypesMatch && notSelfConnection) {
+            const newConnection = { fromPinId: fromPin.id, toPinId: toPin.id };
+            const connections = localGraphData.connections.filter(c => c.toPinId !== toPin.id);
+            connections.push(newConnection);
+
+            const newGraphData = { ...localGraphData, connections };
+            setLocalGraphData(newGraphData);
+            if (onGraphChange) {
+                onGraphChange(newGraphData);
+            }
+        }
+    }, [isInteractive, draggingConnection, localGraphData, onGraphChange]);
 
     const handleWheel = useCallback((e: React.WheelEvent) => {
         if (!isInteractive) return;
@@ -327,6 +371,20 @@ export const BlueprintVisualizer: React.FC<BlueprintVisualizerProps> = ({ graphD
                         return ( <path key={`${conn.fromPinId}-${conn.toPinId}-${index}`} d={pathData} stroke={strokeColor} strokeWidth={strokeWidth} fill="none" /> );
                     })}
 
+                    {draggingConnection && (() => {
+                        const { fromPin, fromNode, mousePosition } = draggingConnection;
+                        const start = getPinPosition(fromNode, fromPin.id);
+                        const end = mousePosition;
+                        const c1x = start.x + Math.abs(end.x - start.x) * 0.6;
+                        const c1y = start.y;
+                        const c2x = end.x - Math.abs(end.x - start.x) * 0.6;
+                        const c2y = end.y;
+                        const pathData = `M ${start.x} ${start.y} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${end.x} ${end.y}`;
+                        const strokeColor = fromPin.type === 'exec' ? '#FFFFFF' : (DATA_TYPE_COLORS[fromPin.dataType] || DATA_TYPE_COLORS.default);
+                        const strokeWidth = fromPin.type === 'exec' ? 2.5 : 2;
+                        return <path d={pathData} stroke={strokeColor} strokeWidth={strokeWidth} fill="none" strokeDasharray="5 5" />;
+                    })()}
+
                     {localGraphData.nodes.map(node => {
                         const nodeHeight = calculateNodeHeight(node);
                         const nodeCursorClass = isInteractive ? 'cursor-grab' : 'cursor-default';
@@ -348,7 +406,11 @@ export const BlueprintVisualizer: React.FC<BlueprintVisualizerProps> = ({ graphD
                                 const pinY = pos.y - node.y;
                                 const pinColor = DATA_TYPE_COLORS[pin.dataType] || DATA_TYPE_COLORS.default;
                                 return (
-                                <g key={pin.id}>
+                                <g key={pin.id} 
+                                   onMouseDown={(e) => handlePinMouseDown(e, pin, node)} 
+                                   onMouseUp={(e) => handlePinMouseUp(e, pin, node)}
+                                   className="cursor-crosshair"
+                                >
                                     {pin.type === 'exec' ? (
                                         <path 
                                             d={pin.direction === 'in' ? `M ${-PIN_SIZE} ${pinY-PIN_SIZE} H ${PIN_SIZE} L ${PIN_SIZE*2} ${pinY} L ${PIN_SIZE} ${pinY+PIN_SIZE} H ${-PIN_SIZE} Z` : `M ${NODE_WIDTH-PIN_SIZE} ${pinY-PIN_SIZE} H ${NODE_WIDTH+PIN_SIZE} L ${NODE_WIDTH+PIN_SIZE*2} ${pinY} L ${NODE_WIDTH+PIN_SIZE} ${pinY+PIN_SIZE} H ${NODE_WIDTH-PIN_SIZE} Z`}

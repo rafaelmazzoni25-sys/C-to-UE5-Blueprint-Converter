@@ -551,7 +551,7 @@ export const BlueprintCreator: React.FC = () => {
                     </div>
                     
                     <div className="flex-1 h-full">
-                         <BlueprintVisualizer graphData={graphData} isInteractive={true} />
+                         <BlueprintVisualizer graphData={graphData} isInteractive={true} onGraphChange={setGraphData} />
                     </div>
                 </div>
 
