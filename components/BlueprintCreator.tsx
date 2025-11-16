@@ -29,7 +29,7 @@ const initialGraphData: GraphData = {
             id: 'node-1',
             name: 'Event BeginPlay',
             type: 'event',
-            x: 100,
+            x: 50,
             y: 200,
             pins: [{ id: 'pin-1', name: '', type: 'exec', direction: 'out', dataType: 'Exec' }],
         },
@@ -37,7 +37,7 @@ const initialGraphData: GraphData = {
             id: 'node-2',
             name: 'Print String',
             type: 'function',
-            x: 450,
+            x: 350,
             y: 180,
             pins: [
                 { id: 'pin-2', name: '', type: 'exec', direction: 'in', dataType: 'Exec' },
@@ -49,26 +49,64 @@ const initialGraphData: GraphData = {
             id: 'node-3',
             name: 'Hello World',
             type: 'literal',
-            x: 100,
+            x: 50,
             y: 350,
-            properties: { value: "Hello World from Blueprint!" },
+            properties: { value: "Loop starting!" },
             pins: [{ id: 'pin-5', name: 'Value', type: 'data', direction: 'out', dataType: 'String' }],
         },
         {
             id: 'node-4',
             name: 'Set Health',
             type: 'function',
-            x: 450,
-            y: 350,
+            x: 950,
+            y: 250,
             pins: [
                 { id: 'pin-6', name: '', type: 'exec', direction: 'in', dataType: 'Exec' },
                 { id: 'pin-7', name: 'New Health', type: 'data', direction: 'in', dataType: 'Integer' },
             ],
         },
+        {
+            id: 'node-5',
+            name: 'For Loop',
+            type: 'flow_control',
+            x: 650,
+            y: 180,
+            pins: [
+                { id: 'pin-8', name: '', type: 'exec', direction: 'in', dataType: 'Exec' },
+                { id: 'pin-9', name: 'First Index', type: 'data', direction: 'in', dataType: 'Integer' },
+                { id: 'pin-10', name: 'Last Index', type: 'data', direction: 'in', dataType: 'Integer' },
+                { id: 'pin-11', name: 'Loop Body', type: 'exec', direction: 'out', dataType: 'Exec' },
+                { id: 'pin-12', name: 'Index', type: 'data', direction: 'out', dataType: 'Integer' },
+                { id: 'pin-13', name: 'Completed', type: 'exec', direction: 'out', dataType: 'Exec' },
+            ],
+        },
+        {
+            id: 'node-6',
+            name: '0',
+            type: 'literal',
+            x: 400,
+            y: 300,
+            properties: { value: "0" },
+            pins: [{ id: 'pin-14', name: 'Value', type: 'data', direction: 'out', dataType: 'Integer' }],
+        },
+        {
+            id: 'node-7',
+            name: '9',
+            type: 'literal',
+            x: 400,
+            y: 400,
+            properties: { value: "9" },
+            pins: [{ id: 'pin-15', name: 'Value', type: 'data', direction: 'out', dataType: 'Integer' }],
+        },
     ],
     connections: [
-        { fromPinId: 'pin-1', toPinId: 'pin-2' },
-        { fromPinId: 'pin-5', toPinId: 'pin-4' }
+        { fromPinId: 'pin-1', toPinId: 'pin-2' }, // BeginPlay -> Print String
+        { fromPinId: 'pin-5', toPinId: 'pin-4' }, // "Hello World" -> Print String
+        { fromPinId: 'pin-3', toPinId: 'pin-8' }, // Print String -> For Loop
+        { fromPinId: 'pin-11', toPinId: 'pin-6' }, // For Loop (Body) -> Set Health
+        { fromPinId: 'pin-12', toPinId: 'pin-7' }, // For Loop (Index) -> Set Health (New Health)
+        { fromPinId: 'pin-14', toPinId: 'pin-9' }, // 0 -> For Loop (First Index)
+        { fromPinId: 'pin-15', toPinId: 'pin-10' }, // 9 -> For Loop (Last Index)
     ],
     variables: [
         { name: "PlayerHealth", type: "Integer" },
