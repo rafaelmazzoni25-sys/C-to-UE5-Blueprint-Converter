@@ -34,6 +34,7 @@ export interface GraphVariable {
 export interface CustomEvent {
     id: string;
     name: string;
+    parameters?: FunctionParameter[];
 }
 
 export interface FunctionParameter {
@@ -46,7 +47,7 @@ export interface CustomFunction {
     id: string;
     name: string;
     parameters: FunctionParameter[];
-    returnType: string; // 'None' para nenhum retorno
+    outputs: FunctionParameter[];
 }
 
 export interface GraphData {

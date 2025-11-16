@@ -1,27 +1,8 @@
 import React, { useState, useCallback, useRef, useMemo } from 'react';
-// FIX: Import `GraphPin` to use as a type annotation.
-import { generateCppCode, GraphData, GraphNode, CppCodeResponse, GraphVariable, GraphPin } from '../services/geminiService';
+import { generateCppCode, GraphData, GraphNode, CppCodeResponse, GraphVariable, GraphPin, CustomEvent, CustomFunction, FunctionParameter } from '../services/geminiService';
 import { BlueprintVisualizer } from './BlueprintVisualizer';
 import { CppCodeDisplay } from './CppCodeDisplay';
 import { MagicWandIcon, PlusIcon, TrashIcon, VariableIcon, BoltIcon, FunctionIcon, EditIcon, BlocksIcon } from './icons';
-
-interface CustomEvent {
-    id: string;
-    name: string;
-}
-
-interface FunctionParameter {
-    id: string;
-    name: string;
-    type: string;
-}
-
-interface CustomFunction {
-    id: string;
-    name: string;
-    parameters: FunctionParameter[];
-    returnType: string; // 'None' for no return
-}
 
 const initialGraphData: GraphData = {
     nodes: [
@@ -257,12 +238,14 @@ export const BlueprintCreator: React.FC = () => {
     // State for events
     const [customEvents, setCustomEvents] = useState<CustomEvent[]>([]);
     const [newEventName, setNewEventName] = useState('');
+    const [newEventParams, setNewEventParams] = useState<FunctionParameter[]>([]);
+    const [editingEvent, setEditingEvent] = useState<CustomEvent | null>(null);
 
     // State for functions
     const [customFunctions, setCustomFunctions] = useState<CustomFunction[]>([]);
     const [newFunctionName, setNewFunctionName] = useState('');
     const [newFunctionParams, setNewFunctionParams] = useState<FunctionParameter[]>([]);
-    const [newFunctionReturnType, setNewFunctionReturnType] = useState('None');
+    const [newFunctionOutputs, setNewFunctionOutputs] = useState<FunctionParameter[]>([]);
     const [editingFunction, setEditingFunction] = useState<CustomFunction | null>(null);
 
     const [nodePickerState, setNodePickerState] = useState<{
@@ -282,7 +265,6 @@ export const BlueprintCreator: React.FC = () => {
             const fullGraphData = { ...graphData, customEvents, customFunctions };
             const response = await generateCppCode(fullGraphData);
             setCppCode(response);
-        // Fix: Added missing braces to the catch block to fix a syntax error that was causing numerous other errors.
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : 'Ocorreu um erro desconhecido.';
             setError(`Falha ao gerar o código C++: ${errorMessage}`);
@@ -329,18 +311,62 @@ export const BlueprintCreator: React.FC = () => {
     };
 
     // --- Event Handlers ---
-    const handleAddEvent = () => {
+    const resetEventForm = () => {
+        setEditingEvent(null);
+        setNewEventName('');
+        setNewEventParams([]);
+    };
+
+    const handleCreateEvent = () => {
         const trimmedName = newEventName.trim();
         if (!trimmedName || customEvents.some(e => e.name.toLowerCase() === trimmedName.toLowerCase())) return;
-        setCustomEvents(prev => [...prev, { id: generateId('eventDef'), name: trimmedName }]);
-        setNewEventName('');
+        setCustomEvents(prev => [...prev, { id: generateId('eventDef'), name: trimmedName, parameters: newEventParams }]);
+        resetEventForm();
+    };
+
+    const handleUpdateEvent = () => {
+        if (!editingEvent) return;
+        const trimmedName = newEventName.trim();
+        if (!trimmedName || customEvents.some(e => e.id !== editingEvent.id && e.name.toLowerCase() === trimmedName.toLowerCase())) return;
+
+        const updatedEvent: CustomEvent = { ...editingEvent, name: trimmedName, parameters: newEventParams };
+        setCustomEvents(prev => prev.map(e => e.id === editingEvent.id ? updatedEvent : e));
+
+        setGraphData(prev => {
+            const affectedNodes = prev.nodes.filter(n => n.type === 'event' && n.name === editingEvent.name);
+            if (affectedNodes.length === 0) return prev;
+
+            const pinsToRemove = new Set(affectedNodes.flatMap(n => n.pins.map(p => p.id)));
+            const newConnections = prev.connections.filter(c => !pinsToRemove.has(c.fromPinId) && !pinsToRemove.has(c.toPinId));
+
+            const newNodes = prev.nodes.map(node => {
+                if (node.type === 'event' && node.name === editingEvent.name) {
+                    const pins: GraphPin[] = [
+                        { id: generateId('pin'), name: '', type: 'exec', direction: 'out', dataType: 'Exec' },
+                        ...(updatedEvent.parameters || []).map(p => ({ id: generateId('pin'), name: p.name, type: 'data' as const, direction: 'out' as const, dataType: p.type })),
+                    ];
+                    return { ...node, name: updatedEvent.name, pins };
+                }
+                return node;
+            });
+
+            return { ...prev, nodes: newNodes, connections: newConnections };
+        });
+
+        resetEventForm();
+    };
+
+    const handleEditEventStart = (event: CustomEvent) => {
+        setActiveTab('events');
+        setEditingEvent(event);
+        setNewEventName(event.name);
+        setNewEventParams(event.parameters?.map(p => ({...p})) || []);
     };
     
     const handleDeleteEvent = (eventId: string) => {
         const eventToDelete = customEvents.find(e => e.id === eventId);
         if (!eventToDelete) return;
         setCustomEvents(prev => prev.filter(e => e.id !== eventId));
-        // Also remove the corresponding event node from the graph
         setGraphData(prev => {
             const nodesToRemove = prev.nodes.filter(n => n.type === 'event' && n.name === eventToDelete.name);
             const pinsToRemove = new Set(nodesToRemove.flatMap(n => n.pins.map(p => p.id)));
@@ -353,9 +379,12 @@ export const BlueprintCreator: React.FC = () => {
     };
 
     const handleAddEventNode = (event: CustomEvent) => {
+        const pins: GraphPin[] = [
+            { id: generateId('pin'), name: '', type: 'exec', direction: 'out', dataType: 'Exec' },
+            ...(event.parameters || []).map(p => ({ id: generateId('pin'), name: p.name, type: 'data' as const, direction: 'out' as const, dataType: p.type }))
+        ];
         const newNode: GraphNode = {
-            id: generateId('node'), name: event.name, type: 'event', x: 150, y: 150,
-            pins: [{ id: generateId('pin'), name: '', type: 'exec', direction: 'out', dataType: 'Exec' }],
+            id: generateId('node'), name: event.name, type: 'event', x: 150, y: 150, pins
         };
         setGraphData(prev => ({ ...prev, nodes: [...prev.nodes, newNode] }));
     };
@@ -365,13 +394,13 @@ export const BlueprintCreator: React.FC = () => {
         setEditingFunction(null);
         setNewFunctionName('');
         setNewFunctionParams([]);
-        setNewFunctionReturnType('None');
+        setNewFunctionOutputs([]);
     };
 
     const handleCreateFunction = () => {
         const trimmedName = newFunctionName.trim();
         if (!trimmedName || customFunctions.some(f => f.name.toLowerCase() === trimmedName.toLowerCase())) return;
-        setCustomFunctions(prev => [...prev, { id: generateId('funcDef'), name: trimmedName, parameters: newFunctionParams, returnType: newFunctionReturnType }]);
+        setCustomFunctions(prev => [...prev, { id: generateId('funcDef'), name: trimmedName, parameters: newFunctionParams, outputs: newFunctionOutputs }]);
         resetFunctionForm();
     };
 
@@ -380,7 +409,6 @@ export const BlueprintCreator: React.FC = () => {
         const trimmedName = newFunctionName.trim();
         if (!trimmedName) return;
         if (customFunctions.some(f => f.id !== editingFunction.id && f.name.toLowerCase() === trimmedName.toLowerCase())) {
-            // In a real app, show an error to the user
             console.error("Function name already exists");
             return;
         }
@@ -389,7 +417,7 @@ export const BlueprintCreator: React.FC = () => {
             ...editingFunction,
             name: trimmedName,
             parameters: newFunctionParams,
-            returnType: newFunctionReturnType,
+            outputs: newFunctionOutputs,
         };
 
         setCustomFunctions(prev => prev.map(f => f.id === editingFunction.id ? updatedFunction : f));
@@ -407,10 +435,8 @@ export const BlueprintCreator: React.FC = () => {
                         { id: generateId('pin'), name: '', type: 'exec', direction: 'in', dataType: 'Exec' },
                         { id: generateId('pin'), name: '', type: 'exec', direction: 'out', dataType: 'Exec' },
                         ...updatedFunction.parameters.map(p => ({ id: generateId('pin'), name: p.name, type: 'data' as 'data', direction: 'in' as 'in', dataType: p.type })),
+                        ...updatedFunction.outputs.map(p => ({ id: generateId('pin'), name: p.name, type: 'data' as 'data', direction: 'out' as 'out', dataType: p.type })),
                     ];
-                    if (updatedFunction.returnType !== 'None') {
-                        pins.push({ id: generateId('pin'), name: 'Return Value', type: 'data' as 'data', direction: 'out' as 'out', dataType: updatedFunction.returnType });
-                    }
                     return { ...node, name: updatedFunction.name, pins };
                 }
                 return node;
@@ -426,8 +452,8 @@ export const BlueprintCreator: React.FC = () => {
         setActiveTab('functions');
         setEditingFunction(func);
         setNewFunctionName(func.name);
-        setNewFunctionParams(func.parameters.map(p => ({...p}))); // Create copies
-        setNewFunctionReturnType(func.returnType);
+        setNewFunctionParams(func.parameters.map(p => ({...p})));
+        setNewFunctionOutputs(func.outputs.map(p => ({...p})));
     };
 
     const handleDeleteFunction = (functionId: string) => {
@@ -450,20 +476,18 @@ export const BlueprintCreator: React.FC = () => {
             { id: generateId('pin'), name: '', type: 'exec', direction: 'in', dataType: 'Exec' },
             { id: generateId('pin'), name: '', type: 'exec', direction: 'out', dataType: 'Exec' },
             ...func.parameters.map(p => ({ id: generateId('pin'), name: p.name, type: 'data' as 'data', direction: 'in' as 'in', dataType: p.type })),
+            ...func.outputs.map(p => ({ id: generateId('pin'), name: p.name, type: 'data' as 'data', direction: 'out' as 'out', dataType: p.type })),
         ];
-        if (func.returnType !== 'None') {
-            pins.push({ id: generateId('pin'), name: 'Return Value', type: 'data' as 'data', direction: 'out' as 'out', dataType: func.returnType });
-        }
         const newNode: GraphNode = { id: generateId('node'), name: func.name, type: 'function', x: 300, y: 300, pins };
         setGraphData(prev => ({...prev, nodes: [...prev.nodes, newNode]}));
     };
 
-    const handleParamChange = (index: number, field: 'name' | 'type', value: string) => {
-        setNewFunctionParams(prev => prev.map((p, i) => i === index ? { ...p, [field]: value } : p));
+    const handleParamChange = (list: FunctionParameter[], setList: React.Dispatch<React.SetStateAction<FunctionParameter[]>>, index: number, field: 'name' | 'type', value: string) => {
+        setList(prev => prev.map((p, i) => i === index ? { ...p, [field]: value } : p));
     };
+    const addParam = (setList: React.Dispatch<React.SetStateAction<FunctionParameter[]>>) => setList(prev => [...prev, { id: generateId('param'), name: `Param${prev.length}`, type: 'Boolean' }]);
+    const removeParam = (setList: React.Dispatch<React.SetStateAction<FunctionParameter[]>>, id: string) => setList(prev => prev.filter(p => p.id !== id));
 
-    const addParam = () => setNewFunctionParams(prev => [...prev, { id: generateId('param'), name: `Param${prev.length}`, type: 'Boolean' }]);
-    const removeParam = (id: string) => setNewFunctionParams(prev => prev.filter(p => p.id !== id));
 
     // --- Common Node Handlers ---
     const handleAddCommonNode = (nodeTemplate: typeof nodeLibrary[number]['nodes'][number], position?: { x: number; y: number }) => {
@@ -497,6 +521,26 @@ export const BlueprintCreator: React.FC = () => {
         handleAddCommonNode(nodeTemplate, { x: nodePickerState.graphX, y: nodePickerState.graphY });
         setNodePickerState({ ...nodePickerState, visible: false });
     };
+    
+    const ParameterEditor: React.FC<{
+        title: string;
+        params: FunctionParameter[];
+        setParams: React.Dispatch<React.SetStateAction<FunctionParameter[]>>;
+    }> = ({ title, params, setParams }) => (
+        <>
+            <h5 className="text-xs font-bold text-slate-500 my-2">{title}</h5>
+            {params.map((param, index) => (
+                <div key={param.id} className="flex gap-1 mb-1 items-center">
+                    <input type="text" placeholder="Nome" value={param.name} onChange={e => handleParamChange(params, setParams, index, 'name', e.target.value)} className="flex-1 w-0 bg-slate-700 border border-slate-600 rounded p-1 text-xs"/>
+                    <select value={param.type} onChange={e => handleParamChange(params, setParams, index, 'type', e.target.value)} className="flex-1 w-0 bg-slate-700 border border-slate-600 rounded p-1 text-xs">
+                        {variableTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                    <button onClick={() => removeParam(setParams, param.id)} className="p-1 text-slate-400 hover:text-red-400"><TrashIcon className="w-3 h-3"/></button>
+                </div>
+            ))}
+            <button onClick={() => addParam(setParams)} className="w-full text-xs py-1 my-1 bg-slate-700 hover:bg-slate-600 rounded">Adicionar Parâmetro</button>
+        </>
+    );
 
     const renderSidebarContent = () => {
         if (activeTab === 'variables') return (
@@ -531,16 +575,25 @@ export const BlueprintCreator: React.FC = () => {
         if (activeTab === 'events') return (
              <>
                 <div className="mb-4 p-3 bg-slate-800/70 rounded-md border border-slate-700">
-                    <h4 className="text-sm font-bold text-slate-400 mb-2">Adicionar Novo Evento</h4>
-                    <input type="text" placeholder="Nome do Evento" value={newEventName} onChange={(e) => setNewEventName(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-blue-500"/>
-                    <button onClick={handleAddEvent} className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm bg-blue-600 hover:bg-blue-700 rounded-md"><PlusIcon className="w-4 h-4" />Adicionar</button>
+                    <h4 className="text-sm font-bold text-slate-400 mb-2">{editingEvent ? 'Editar Evento' : 'Criar Novo Evento'}</h4>
+                    <input type="text" placeholder="Nome do Evento" value={newEventName} onChange={(e) => setNewEventName(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+                    <ParameterEditor title="Parâmetros de Saída" params={newEventParams} setParams={setNewEventParams} />
+                    <div className="flex gap-2 mt-2">
+                        {editingEvent && <button onClick={resetEventForm} className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm bg-slate-600 hover:bg-slate-700 rounded-md">Cancelar</button>}
+                        <button onClick={editingEvent ? handleUpdateEvent : handleCreateEvent} className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm bg-blue-600 hover:bg-blue-700 rounded-md">
+                            {editingEvent ? 'Salvar' : <><PlusIcon className="w-4 h-4" />Criar</>}
+                        </button>
+                    </div>
                 </div>
                 <div className="flex-1 overflow-y-auto space-y-2 pr-2">
                     {customEvents.map(event => (
                         <div key={event.id} className="p-2 bg-slate-800 rounded-md border border-slate-700">
                             <div className="flex justify-between items-center">
                                 <p className="font-bold text-slate-200 text-sm">{event.name}</p>
-                                <button onClick={() => handleDeleteEvent(event.id)} className="p-1 text-slate-400 hover:text-red-400"><TrashIcon className="w-4 h-4" /></button>
+                                <div>
+                                    <button onClick={() => handleEditEventStart(event)} className="p-1 text-slate-400 hover:text-blue-400"><EditIcon className="w-4 h-4" /></button>
+                                    <button onClick={() => handleDeleteEvent(event.id)} className="p-1 text-slate-400 hover:text-red-400"><TrashIcon className="w-4 h-4" /></button>
+                                </div>
                             </div>
                              <button onClick={() => handleAddEventNode(event)} className="mt-2 w-full text-xs py-1 px-2 bg-slate-700 hover:bg-slate-600 rounded">Adicionar Nó de Evento</button>
                         </div>
@@ -553,23 +606,9 @@ export const BlueprintCreator: React.FC = () => {
                 <div className="mb-4 p-3 bg-slate-800/70 rounded-md border border-slate-700">
                     <h4 className="text-sm font-bold text-slate-400 mb-2">{editingFunction ? 'Editar Função' : 'Criar Nova Função'}</h4>
                     <input type="text" placeholder="Nome da Função" value={newFunctionName} onChange={(e) => setNewFunctionName(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-blue-500"/>
-                    <h5 className="text-xs font-bold text-slate-500 my-2">Parâmetros</h5>
-                    {newFunctionParams.map((param, index) => (
-                        <div key={param.id} className="flex gap-1 mb-1 items-center">
-                            <input type="text" placeholder="Nome" value={param.name} onChange={e => handleParamChange(index, 'name', e.target.value)} className="flex-1 w-0 bg-slate-700 border border-slate-600 rounded p-1 text-xs"/>
-                            <select value={param.type} onChange={e => handleParamChange(index, 'type', e.target.value)} className="flex-1 w-0 bg-slate-700 border border-slate-600 rounded p-1 text-xs">
-                                {variableTypes.map(t => <option key={t} value={t}>{t}</option>)}
-                            </select>
-                            <button onClick={() => removeParam(param.id)} className="p-1 text-slate-400 hover:text-red-400"><TrashIcon className="w-3 h-3"/></button>
-                        </div>
-                    ))}
-                    <button onClick={addParam} className="w-full text-xs py-1 my-1 bg-slate-700 hover:bg-slate-600 rounded">Adicionar Parâmetro</button>
-                    <h5 className="text-xs font-bold text-slate-500 my-2">Retorno</h5>
-                    <select value={newFunctionReturnType} onChange={(e) => setNewFunctionReturnType(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                        <option value="None">None</option>
-                        {variableTypes.map(type => <option key={type} value={type}>{type}</option>)}
-                    </select>
-                    <div className="flex gap-2">
+                    <ParameterEditor title="Parâmetros de Entrada" params={newFunctionParams} setParams={setNewFunctionParams} />
+                    <ParameterEditor title="Parâmetros de Saída" params={newFunctionOutputs} setParams={setNewFunctionOutputs} />
+                    <div className="flex gap-2 mt-2">
                         {editingFunction && (
                             <button onClick={resetFunctionForm} className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm bg-slate-600 hover:bg-slate-700 rounded-md">Cancelar</button>
                         )}
